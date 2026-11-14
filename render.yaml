@@ -18,7 +18,7 @@ services:
 
   - type: web
     name: mirage-dashboard
-    plan: free
+    runtime: static
     rootDir: dashboard
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
@@ -29,5 +29,7 @@ services:
         value: "false"
     routes:
       - type: rewrite
-        source: /*
+        source: 
+        
+        
         destination: /index.html
