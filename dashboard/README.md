@@ -34,7 +34,6 @@ To connect the dashboard to the FastAPI backend:
    cp .env.example .env
    # Edit .env and set ADMIN_TOKEN to a long random secret.
    pip install -r requirements.txt
-   python -m app.seed_demo
    uvicorn app.main:app --reload
    ```
 
@@ -42,19 +41,22 @@ To connect the dashboard to the FastAPI backend:
    ```bash
    cd dashboard
    cp .env.example .env
+   # Set VITE_USE_MOCK=false and VITE_API_URL=http://localhost:8000
    npm install
    npm run dev
    ```
 
 3. Open `http://localhost:5173` and sign in with the same `ADMIN_TOKEN` value. Dashboard API calls use Bearer authentication and poll for events every 2.5 seconds.
 
-To use the included AWS attacker simulator, create an AWS honeytoken in the dashboard and copy its `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_ENDPOINT_URL` into the simulator command shown in `tools/README.md`.
+To use the included AWS attacker simulator, create an AWS honeytoken in the dashboard and copy its `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_ENDPOINT_URL` from the one-time creation panel into the simulator command shown in `tools/README.md`.
+
+Tracked decoys and tokens are stored in the backend database. Their secrets appear only at creation. Decoy inventory records where you planted a decoy; Mirage records a hit when its trap URL is requested. It does not monitor someone simply reading or downloading a file.
 
 ### Dashboard Mode
 | Variable | Mock Mode (Default) | Real API Mode |
 | :--- | :--- | :--- |
 | `VITE_USE_MOCK` | `true` | `false` |
-| `VITE_API_URL` | Empty / unset | `http://localhost:8000` (or deployed URL) |
+| `VITE_API_URL` | `http://localhost:8000` | Backend URL (required for real API mode) |
 
 `ADMIN_TOKEN` belongs in the backend environment only; enter it at the dashboard login page. Do not put it in a `VITE_` variable, because Vite embeds those values in the browser bundle.
 

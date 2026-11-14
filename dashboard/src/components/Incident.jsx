@@ -1,8 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   ShieldAlert,
-  Server,
-  Globe,
   Clock,
   Sparkles,
   CheckSquare,
@@ -11,9 +9,6 @@ import {
   RefreshCw,
   Layers,
   Terminal,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp
 } from "lucide-react";
 import { ScoreBadge } from "./ScoreBadge.jsx";
 import { SeverityBadge } from "./SeverityBadge.jsx";
@@ -21,7 +16,6 @@ import { FlagChip } from "./FlagChip.jsx";
 import { CopyButton } from "./CopyButton.jsx";
 import { AiAnalysisSkeleton } from "./Skeleton.jsx";
 import {
-  FLAG_DESCRIPTIONS,
   formatRelativeTime,
   formatFullTimestamp,
   truncateText
@@ -48,19 +42,24 @@ export function Incident({ event, onSelectEventId = null }) {
   // Find all events associated with this attacker's IP
   const ipEvents = useMemo(() => {
     if (!event || !event.ip) return [];
-    return events
+    const incidentEvents = Array.isArray(event.events) && event.events.length
+      ? event.events
+      : events;
+    return incidentEvents
       .filter((e) => e.ip === event.ip)
       .sort((a, b) => new Date(a.ts) - new Date(b.ts)); // Ascending chronological order
-  }, [events, event?.ip]);
+  }, [events, event]);
 
   const eventIdsForIp = useMemo(() => ipEvents.map((e) => e.id), [ipEvents]);
+  const eventIdsKey = eventIdsForIp.join(",");
+  const incidentIp = event?.ip;
 
   // AI Summary fetcher
-  const handleRunAiAnalysis = async () => {
-    if (!event?.ip || eventIdsForIp.length === 0) return;
+  const handleRunAiAnalysis = useCallback(async () => {
+    if (!incidentIp || !eventIdsKey) return;
     setAiState({ status: "loading", data: null, error: null });
     try {
-      const summaryResult = await getAiSummary(event.ip, eventIdsForIp);
+      const summaryResult = await getAiSummary(incidentIp, eventIdsKey.split(",").map(Number));
       setAiState({ status: "success", data: summaryResult, error: null });
     } catch (err) {
       setAiState({
@@ -69,7 +68,7 @@ export function Incident({ event, onSelectEventId = null }) {
         error: err.message || "Failed to analyze incident."
       });
     }
-  };
+  }, [incidentIp, eventIdsKey, getAiSummary]);
 
   // Auto-run once in mock mode when opening an incident
   useEffect(() => {
@@ -82,7 +81,7 @@ export function Incident({ event, onSelectEventId = null }) {
         setAiState({ status: "idle", data: null, error: null });
       }
     }
-  }, [event?.id, event?.ip, isMockMode]);
+  }, [event?.id, event?.ip, isMockMode, handleRunAiAnalysis]);
 
   if (!event) {
     return (
@@ -295,7 +294,7 @@ export function Incident({ event, onSelectEventId = null }) {
             return (
               <div
                 key={timelineEv.id}
-                onClick={() => onSelectEventId && onSelectEventId(timelineEv.id)}
+                onClick={() => onSelectEventId && onSelectEventId(timelineEv.incident_id || timelineEv.id)}
                 className={`relative p-3.5 rounded-lg border transition-all cursor-pointer ${
                   isSelected
                     ? "bg-[#16213A] border-emerald-500/70 shadow-md ring-1 ring-emerald-500/30"

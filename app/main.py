@@ -15,15 +15,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app import models
-from app.database import Base, engine, get_db
+from app.database import engine, get_db, init_db
 from app.detection import detect_honeytoken_usage, token_database_id
 from app.honeytoken_service import generate_honeytoken
 from app.routes.admin import require_admin, router as admin_router
 
-Base.metadata.create_all(bind=engine)
+init_db()
 
 app = FastAPI(
-    title="Honeytokens as a Service",
+    title="Mirage Honeytoken Monitor",
     description="A deceptive credential generation and detection platform",
     version="2.0.0",
 )

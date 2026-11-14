@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, ShieldAlert } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Incident } from "../components/Incident.jsx";
 import { EmptyState } from "../components/EmptyState.jsx";
 import { TableRowSkeleton } from "../components/Skeleton.jsx";
@@ -9,21 +9,18 @@ import { useAppData } from "../hooks/useAppData.js";
 export function IncidentPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { events, loadingEvents } = useAppData();
+  const { incidents, events, loadingEvents } = useAppData();
 
   // Find the requested event or fall back to the highest score or first event
   const currentEvent = useMemo(() => {
-    if (!events || events.length === 0) return null;
-
-    if (eventId) {
-      const match = events.find((e) => String(e.id) === String(eventId));
-      if (match) return match;
-    }
-
-    // Default to the highest score event or the latest event
-    const highRisk = events.find((e) => (e.score ?? 0) >= 70);
-    return highRisk || events[0];
-  }, [events, eventId]);
+    if (!incidents || incidents.length === 0) return null;
+    const incident = incidents.find((item) => String(item.id) === String(eventId)) || incidents[0];
+    const incidentEvents = incident.events?.length ? incident.events : events.filter((item) => item.ip === incident.ip);
+    const latest = [...incidentEvents].sort((a, b) => new Date(b.ts || b.created_at) - new Date(a.ts || a.created_at))[0];
+    return latest ? { ...latest, events: incidentEvents, incident_id: incident.id, display_incident_id: incident.id,
+      score: incident.score, severity: incident.severity, flags: incident.flags, geo: incident.geo,
+      event_count: incident.event_count } : { ...incident, id: incident.id, display_incident_id: incident.id, events: [] };
+  }, [incidents, events, eventId]);
 
   const handleSelectEventId = (newId) => {
     navigate(`/incidents/${newId}`);
@@ -73,7 +70,7 @@ export function IncidentPage() {
 
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono text-[#8FA0BD]">
-            Incident ID: <span className="text-white font-bold">#{currentEvent.id}</span>
+          Incident ID: <span className="text-white font-bold">#{currentEvent.display_incident_id || currentEvent.id}</span>
           </span>
         </div>
       </div>

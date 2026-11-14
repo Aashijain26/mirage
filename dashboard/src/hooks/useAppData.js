@@ -10,6 +10,7 @@ import React, {
 import { useLiveEvents } from "./useLiveEvents.js";
 import {
   getTokens,
+  getIncidents,
   createToken as apiCreateToken,
   deleteToken as apiDeleteToken,
   getDecoys as apiGetDecoys,
@@ -25,10 +26,13 @@ const AppDataContext = createContext(null);
 export function AppDataProvider({ children }) {
   const liveEvents = useLiveEvents();
   const [tokens, setTokens] = useState([]);
+  const [incidents, setIncidents] = useState([]);
   const [decoys, setDecoys] = useState([]);
   const [loadingTokens, setLoadingTokens] = useState(true);
   const [loadingDecoys, setLoadingDecoys] = useState(true);
   const [tokensError, setTokensError] = useState(null);
+  const [decoysError, setDecoysError] = useState(null);
+  const [incidentsError, setIncidentsError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   const aiCacheRef = useRef(new Map());
@@ -52,13 +56,24 @@ export function AppDataProvider({ children }) {
     }
   }, []);
 
+  const refreshIncidents = useCallback(async () => {
+    try {
+      const data = await getIncidents();
+      setIncidents(Array.isArray(data) ? data : []);
+      setIncidentsError(null);
+    } catch (err) {
+      setIncidentsError(err.message || "Failed to load incidents");
+    }
+  }, []);
+
   const refreshDecoys = useCallback(async () => {
     setLoadingDecoys(true);
+    setDecoysError(null);
     try {
       const data = await apiGetDecoys();
       setDecoys(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error(err);
+      setDecoysError(err.message || "Failed to load decoys");
     } finally {
       setLoadingDecoys(false);
     }
@@ -66,8 +81,15 @@ export function AppDataProvider({ children }) {
 
   useEffect(() => {
     refreshTokens();
+    refreshIncidents();
     refreshDecoys();
-  }, [refreshTokens, refreshDecoys]);
+  }, [refreshTokens, refreshDecoys, refreshIncidents]);
+
+  useEffect(() => {
+    if (isMockMode) return undefined;
+    const timer = setInterval(refreshIncidents, 5000);
+    return () => clearInterval(timer);
+  }, [refreshIncidents]);
 
   const tokenMap = useMemo(() => {
     const map = new Map();
@@ -78,14 +100,15 @@ export function AppDataProvider({ children }) {
   }, [tokens]);
 
   const stats = useMemo(() => {
-    const totalHoneytokens = tokens.length || 14;
-    const activeHoneytokens = tokens.filter((t) => !t.revoked).length || 14;
-    const tokensHit = tokens.filter((t) => (t.hits || 0) > 0).length || 7;
-    const hitsToday = 46;
+    const totalHoneytokens = tokens.length;
+    const activeHoneytokens = tokens.filter((t) => !t.revoked).length;
+    const tokensHit = tokens.filter((t) => (t.hits || 0) > 0).length;
+    const today = new Date().toISOString().slice(0, 10);
+    const hitsToday = liveEvents.events.filter((event) => String(event.ts || event.created_at || "").slice(0, 10) === today).length;
 
-    const highSeverity = liveEvents.events.filter((e) => (e.score ?? 0) >= 70).length || 3;
-    const mediumSeverity = liveEvents.events.filter((e) => (e.score ?? 0) >= 50 && (e.score ?? 0) < 70).length || 8;
-    const lowSeverity = liveEvents.events.filter((e) => (e.score ?? 0) < 50).length || 9;
+    const highSeverity = liveEvents.events.filter((e) => (e.score ?? 0) >= 70).length;
+    const mediumSeverity = liveEvents.events.filter((e) => (e.score ?? 0) >= 50 && (e.score ?? 0) < 70).length;
+    const lowSeverity = liveEvents.events.filter((e) => (e.score ?? 0) < 50).length;
 
     return {
       totalHoneytokens,
@@ -95,11 +118,15 @@ export function AppDataProvider({ children }) {
       highSeverity,
       mediumSeverity,
       lowSeverity,
-      totalIncidents: liveEvents.events.length || 20
+      totalIncidents: incidents.length,
+      totalAttacks: liveEvents.events.length,
+      highSeverityIncidents: incidents.filter((incident) => (incident.score ?? 0) >= 70).length,
+      lastAttackTimestamp: liveEvents.events[0]?.ts || liveEvents.events[0]?.created_at || null
     };
-  }, [tokens, liveEvents.events]);
+  }, [tokens, liveEvents.events, incidents]);
 
   const handleSimulateAttack = useCallback(() => {
+    if (!isMockMode) return null;
     const attackEvent = simulateImmediateAttack();
     liveEvents.pushEvent(attackEvent);
     return attackEvent;
@@ -141,14 +168,18 @@ export function AppDataProvider({ children }) {
 
   const getAiSummary = useCallback(async (ip, eventIds) => {
     if (!ip) return null;
-    if (aiCacheRef.current.has(ip)) return aiCacheRef.current.get(ip);
+    const cacheKey = `${ip}:${(eventIds || []).join(",")}`;
+    if (aiCacheRef.current.has(cacheKey)) return aiCacheRef.current.get(cacheKey);
     const result = await summarize(eventIds);
-    aiCacheRef.current.set(ip, result);
+    aiCacheRef.current.set(cacheKey, result);
     return result;
   }, []);
 
   const value = {
     events: liveEvents.events,
+    incidents,
+    incidentsError,
+    refreshIncidents,
     connectionStatus: liveEvents.status,
     loadingEvents: liveEvents.loading,
     eventsError: liveEvents.error,
@@ -166,6 +197,7 @@ export function AppDataProvider({ children }) {
     deleteToken: handleDeleteToken,
 
     decoys,
+    decoysError,
     loadingDecoys,
     refreshDecoys,
     createDecoy: handleCreateDecoy,

@@ -12,6 +12,7 @@ class Honeytoken(Base):
     name = Column(String, nullable=False)
     token_hash = Column(String, unique=True, nullable=False)
     token_type = Column(String, nullable=False)
+    context = Column(String(500), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -60,3 +61,17 @@ class Event(Base):
     severity = Column(String, nullable=False, default="low")
     flags = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+
+
+class PlantedDecoy(Base):
+    """A managed placement record linked to the active honeytoken that detects it."""
+    __tablename__ = "planted_decoys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    honeytoken_id = Column(Integer, ForeignKey("honeytokens.id"), nullable=False, unique=True, index=True)
+    decoy_type = Column(String, nullable=False)
+    label = Column(String(120), nullable=False)
+    host = Column(String(255), nullable=False)
+    path = Column(String(500), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

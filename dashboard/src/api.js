@@ -15,7 +15,9 @@ import {
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || "";
 const RAW_USE_MOCK = import.meta.env.VITE_USE_MOCK;
-export const isMockMode = RAW_USE_MOCK === "true" || !RAW_API_URL.trim();
+// Mock behavior is opt-in only. A missing API URL must fail visibly instead of
+// silently showing fabricated data in a supposed live deployment.
+export const isMockMode = RAW_USE_MOCK === "true";
 
 const apiClient = axios.create({ baseURL: RAW_API_URL.trim(), timeout: 10000 });
 apiClient.interceptors.request.use((config) => {
@@ -35,6 +37,7 @@ function normalizeList(data, key) {
 
 export async function checkHealth(token) {
   if (isMockMode) return { authenticated: true };
+  if (!RAW_API_URL.trim()) throw new Error("Set VITE_API_URL to the backend address before signing in.");
   const res = await apiClient.post(ENDPOINTS.auth, {}, {
     headers: { Authorization: `Bearer ${String(token || "").trim()}` }
   });
@@ -51,6 +54,15 @@ export async function getTokens() {
   if (isMockMode) return mockGetTokens();
   const res = await apiClient.get(ENDPOINTS.tokens);
   return normalizeList(res.data, "tokens");
+}
+
+export async function getIncidents() {
+  if (isMockMode) return (await mockGetEvents()).map((event) => ({
+    ...event, last_seen: event.ts || event.created_at, first_seen: event.ts || event.created_at,
+    event_count: 1, events: [event], token_label: event.token_label || event.token_id
+  }));
+  const res = await apiClient.get(ENDPOINTS.incidents);
+  return normalizeList(res.data, "incidents");
 }
 
 export async function createToken(body) {
@@ -71,53 +83,20 @@ export async function deleteToken(id) {
 
 export async function getDecoys() {
   if (isMockMode) return mockGetDecoys();
-  try {
-    const res = await apiClient.post(ENDPOINTS.decoys, {
-      stack: "FastAPI React Production",
-      token_types: ["aws", "api_key", "db", "webhook"]
-    });
-    const list = normalizeList(res.data, "decoys");
-    return list.map((d, idx) => ({
-      id: d.id || `decoy-${idx + 1}`,
-      type: d.token_type || d.type || "env",
-      badge: (d.token_type || d.type || "ENV").toUpperCase(),
-      label: d.label || (Array.isArray(d.var_names) && d.var_names.length ? d.var_names[0] : "Decoy Credential"),
-      host: d.host || "production",
-      path: d.path || d.file_path || "/app/.env",
-      status: d.status || "Untouched",
-      hits: d.hits || 0,
-      var_names: d.var_names || [],
-      comment: d.comment || "",
-      placement_note: d.placement_note || ""
-    }));
-  } catch (err) {
-    if (err.response?.status === 401) {
-      console.warn("Unauthorized request to get decoys");
-    } else {
-      console.error("Failed to fetch decoys:", err.message);
-    }
-    return [];
-  }
+  const res = await apiClient.get(ENDPOINTS.decoys);
+  return normalizeList(res.data, "decoys");
 }
 
 export async function createDecoy(body) {
   if (isMockMode) return mockCreateDecoy(body);
-  return {
-    id: `dec-${Date.now()}`,
-    type: body.type || "env",
-    badge: (body.type || "ENV").toUpperCase(),
-    label: body.label || "New Decoy",
-    host: body.host || "web-server-01",
-    path: body.path || `/srv/app/${body.label || "secret"}`,
-    status: "Untouched",
-    hits: 0,
-    last_hit: null
-  };
+  const res = await apiClient.post(ENDPOINTS.decoys, body);
+  return res.data;
 }
 
 export async function deleteDecoy(id) {
   if (isMockMode) return mockDeleteDecoy(id);
-  return { ok: true, id };
+  const res = await apiClient.delete(`${ENDPOINTS.decoys}/${id}`);
+  return res.data;
 }
 
 export async function summarize(eventIds) {

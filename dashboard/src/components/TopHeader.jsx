@@ -12,7 +12,7 @@ const TABS = [
 
 export function TopHeader() {
   const location = useLocation();
-  const { simulateAttack, searchQuery, setSearchQuery } = useAppData();
+  const { simulateAttack, searchQuery, setSearchQuery, isMockMode } = useAppData();
   const [toast, setToast] = useState(null);
 
   let breadcrumb = "MIRAGE / OVERVIEW";
@@ -63,13 +63,13 @@ export function TopHeader() {
               <code className="text-emerald-400">{toast.token}</code> (Risk score: {toast.score})
             </span>
           </div>
-          <button
+          {isMockMode && <button
             type="button"
             onClick={() => setToast(null)}
             className="text-rose-300 hover:text-white p-1"
           >
             <X className="w-3.5 h-3.5" />
-          </button>
+          </button>}
         </div>
       )}
 

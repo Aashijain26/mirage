@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Key, FileCode, Database, Archive, Trash2 } from "lucide-react";
 import { SpotlightCard } from "../components/SpotlightCard.jsx";
+import { CopyButton } from "../components/CopyButton.jsx";
 import { useAppData } from "../hooks/useAppData.js";
 
 const DECOY_TYPES = [
@@ -35,12 +36,14 @@ const DECOY_TYPES = [
 ];
 
 export function Decoys() {
-  const { decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys } = useAppData();
+  const { decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys, decoysError, isMockMode } = useAppData();
   const [selectedType, setSelectedType] = useState("ssh");
   const [label, setLabel] = useState("");
   const [host, setHost] = useState("");
   const [path, setPath] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [createdDecoy, setCreatedDecoy] = useState(null);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,17 +51,19 @@ export function Decoys() {
 
     setSubmitting(true);
     try {
-      await createDecoy({
+      const created = await createDecoy({
         type: selectedType,
         label: label.trim(),
         host: host.trim() || "web-server-01",
         path: path.trim() || `/srv/app/${label.trim()}`
       });
+      setCreatedDecoy(created);
+      setError("");
       setLabel("");
       setHost("");
       setPath("");
     } catch (err) {
-      console.error(err);
+      setError(err.message || "Could not create decoy");
     } finally {
       setSubmitting(false);
     }
@@ -87,7 +92,7 @@ export function Decoys() {
               </h2>
             </div>
             <p className="text-xs text-[#8FA0BD]">
-              Files that look worth stealing. They are not.
+              Create a tracked honeytoken and record where you planted it. Mirage detects requests to its trap URL, not file reads.
             </p>
           </div>
 
@@ -167,8 +172,17 @@ export function Decoys() {
               disabled={submitting}
               className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-black font-bold text-xs py-3 rounded-xl shadow-lg shadow-emerald-500/25 active:scale-[0.99] transition-all cursor-pointer hover:shadow-[0_0_20px_rgba(34,197,94,0.35)]"
             >
-              Plant decoy
+              {submitting ? "Creating..." : "Create tracked decoy"}
             </button>
+            {error && <p role="alert" className="text-xs text-rose-400">{error}</p>}
+            {createdDecoy && (
+              <div className="rounded-xl border border-emerald-700/60 bg-emerald-950/30 p-3 space-y-2 text-xs text-emerald-100">
+                <strong>{isMockMode ? "Demo record created in this browser session." : "Created. Copy this credential now; it will not be shown again."}</strong>
+                {createdDecoy.value && <div className="flex items-start justify-between gap-2 break-all font-mono"><span>{typeof createdDecoy.value === "string" ? createdDecoy.value : JSON.stringify(createdDecoy.value)}</span><CopyButton compact label="Copy credential" textToCopy={typeof createdDecoy.value === "string" ? createdDecoy.value : JSON.stringify(createdDecoy.value)} /></div>}
+                {createdDecoy.callback_url && <div className="flex items-start justify-between gap-2 break-all font-mono text-cyan-300"><span>Trap URL: {createdDecoy.callback_url}</span><CopyButton compact label="Copy trap URL" textToCopy={createdDecoy.callback_url} /></div>}
+                <button type="button" onClick={() => setCreatedDecoy(null)} className="text-emerald-300 underline">Dismiss</button>
+              </div>
+            )}
           </form>
         </SpotlightCard>
 
@@ -188,6 +202,7 @@ export function Decoys() {
 
           {/* Decoy List Items */}
           <div className="space-y-3.5">
+            {decoysError && <p role="alert" className="text-xs text-rose-400">{decoysError}</p>}
             {loadingDecoys && (
               <div className="py-8 text-center text-xs font-mono-tech text-[#8FA0BD]">
                 Loading decoys...
@@ -195,7 +210,7 @@ export function Decoys() {
             )}
             {!loadingDecoys && filteredDecoys.length === 0 && (
               <div className="py-8 text-center text-xs font-mono-tech text-[#8FA0BD]">
-                No planted decoys found.
+                No decoys have been registered yet.
               </div>
             )}
             {!loadingDecoys &&

@@ -4,9 +4,8 @@
 
 const AUTH_TOKEN_KEY = "mirage_admin_token";
 
-const RAW_API_URL = import.meta.env.VITE_API_URL || "";
 const RAW_USE_MOCK = import.meta.env.VITE_USE_MOCK;
-export const isMockMode = RAW_USE_MOCK === "true" || !RAW_API_URL.trim();
+export const isMockMode = RAW_USE_MOCK === "true";
 
 export function getAuthToken() {
   try {

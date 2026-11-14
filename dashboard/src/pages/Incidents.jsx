@@ -1,220 +1,68 @@
-import React, { useState, useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, AlertCircle, ShieldCheck } from "lucide-react";
 import { SpotlightCard } from "../components/SpotlightCard.jsx";
 import { useAppData } from "../hooks/useAppData.js";
 
-function formatTimeAgo(ts) {
-  if (!ts) return "Just now";
-  const diff = Date.now() - new Date(ts).getTime();
-  if (isNaN(diff) || diff < 0) return "Just now";
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function ago(value) {
+  if (!value) return "Unknown time";
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000));
+  if (!Number.isFinite(minutes)) return "Unknown time";
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+  return `${Math.floor(minutes / 1440)}d ago`;
 }
 
 export function Incidents() {
   const navigate = useNavigate();
-  const { events, searchQuery } = useAppData();
+  const { incidents, incidentsError, searchQuery, loadingEvents } = useAppData();
   const [filter, setFilter] = useState("all");
-
-  const lastHourSummary = useMemo(() => {
-    const oneHourAgo = Date.now() - 3600 * 1000;
-    const recent = events.filter((e) => {
-      const ts = e.ts || e.created_at;
-      if (!ts) return false;
-      const t = new Date(ts).getTime();
-      return !isNaN(t) && t >= oneHourAgo;
-    });
-    const high = recent.filter((e) => (e.score ?? 0) >= 70).length;
-    if (recent.length === 0) {
-      return "No hits in the last hour.";
-    }
-    const hitWord = recent.length === 1 ? "hit" : "hits";
-    const highWord = high === 1 ? "is" : "are";
-    return `${recent.length} ${hitWord} in the last hour. ${high} ${highWord} high severity.`;
-  }, [events]);
-
-  const filteredEvents = useMemo(() => {
-    let list = events;
-    if (filter === "high") {
-      list = list.filter((e) => (e.score ?? 0) >= 70);
-    } else if (filter === "medium") {
-      list = list.filter((e) => (e.score ?? 0) >= 50 && (e.score ?? 0) < 70);
-    } else if (filter === "low") {
-      list = list.filter((e) => (e.score ?? 0) < 50);
-    }
-
-    if (searchQuery && searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter(
-        (e) =>
-          e.ip?.toLowerCase().includes(q) ||
-          e.token_label?.toLowerCase().includes(q) ||
-          e.geo?.city?.toLowerCase().includes(q) ||
-          e.geo?.country?.toLowerCase().includes(q)
-      );
-    }
-
-    return list;
-  }, [events, filter, searchQuery]);
+  const rows = useMemo(() => incidents.filter((incident) => {
+    const severity = incident.severity || "low";
+    if (filter !== "all" && severity !== filter) return false;
+    const query = searchQuery.trim().toLowerCase();
+    return !query || [incident.ip, incident.token_label, incident.geo?.city, incident.geo?.country,
+      ...(incident.flags || [])].some((value) => String(value || "").toLowerCase().includes(query));
+  }), [incidents, filter, searchQuery]);
 
   return (
     <div className="p-6 sm:p-8 space-y-4 max-w-7xl mx-auto">
-      {/* Sub-header status text */}
-      <div className="text-xs text-[#8FA0BD] font-mono-tech">
-        <span>{lastHourSummary}</span>
-      </div>
-
-      {/* Main Table Card: [06] \\ LOG */}
       <SpotlightCard className="bg-[#111726] border border-[#1e2a40] rounded-2xl p-5 sm:p-6 shadow-xl">
-        {/* Card Header & Filter Pills */}
         <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#1b263b]">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono-tech text-[#8FA0BD]">[06] \\</span>
-            <h2 className="font-heading text-lg font-bold text-white tracking-wide">LOG</h2>
-            <span className="text-xs font-mono-tech text-[#64748b] ml-1">
-              {events.length} incidents
-            </span>
+            <h2 className="font-heading text-lg font-bold text-white tracking-wide">CORRELATED INCIDENTS</h2>
+            <span className="text-xs font-mono-tech text-[#64748b]">{rows.length} shown</span>
           </div>
-
-          {/* Filter Pills with White Translucent Circle on Hover */}
           <div className="inline-flex items-center bg-[#0d1320] border border-[#1e2a40] rounded-full p-1 text-xs font-mono-tech">
-            {["all", "high", "medium", "low"].map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className={`px-4 py-1 rounded-full capitalize transition-all duration-200 cursor-pointer ${
-                  filter === f
-                    ? "bg-[#2563eb] text-white font-bold shadow-sm shadow-blue-500/20"
-                    : "text-[#8FA0BD] hover:text-white hover:bg-white/10"
-                }`}
-              >
-                {f === "all" ? "All" : f}
+            {["all", "high", "medium", "low"].map((item) => (
+              <button key={item} type="button" onClick={() => setFilter(item)}
+                className={`px-4 py-1 rounded-full capitalize ${filter === item ? "bg-[#2563eb] text-white font-bold" : "text-[#8FA0BD] hover:text-white"}`}>
+                {item}
               </button>
             ))}
           </div>
         </div>
-
-        {/* Table */}
         <div className="overflow-x-auto">
+          {incidentsError && <p role="alert" className="mb-3 text-xs text-rose-400">{incidentsError}</p>}
           <table className="w-full text-left text-xs font-mono-tech border-collapse">
-            <thead>
-              <tr className="border-b border-[#1b263b] text-[#606d85] uppercase text-[11px] tracking-wider">
-                <th className="py-3 px-3 w-16">#</th>
-                <th className="py-3 px-4">SOURCE</th>
-                <th className="py-3 px-4">TOKEN</th>
-                <th className="py-3 px-4">FLAGS</th>
-                <th className="py-3 px-4 w-36">SCORE</th>
-                <th className="py-3 px-4 text-right w-28">WHEN</th>
-              </tr>
-            </thead>
+            <thead><tr className="border-b border-[#1b263b] text-[#606d85] uppercase text-[11px]">
+              <th className="py-3 px-3">IP / LOCATION</th><th className="py-3 px-4">TOKEN</th>
+              <th className="py-3 px-4">ACTIVITY</th><th className="py-3 px-4">RISK</th><th className="py-3 px-4 text-right">LAST SEEN</th>
+            </tr></thead>
             <tbody className="divide-y divide-[#172033]">
-              {filteredEvents.map((ev, index) => {
-                const isHigh = (ev.score ?? 0) >= 70;
-                const isMed = (ev.score ?? 0) >= 50 && (ev.score ?? 0) < 70;
-                const flags = Array.isArray(ev.flags) ? ev.flags : [];
-                const primaryFlags = flags.slice(0, 2);
-                const extraCount = flags.length > 2 ? flags.length - 2 : 0;
-                const scoreColor = isHigh
-                  ? "from-rose-500 to-red-600"
-                  : isMed
-                  ? "from-amber-400 to-orange-500"
-                  : "from-blue-500 to-cyan-400";
-
-                return (
-                  <tr
-                    key={ev.id || index}
-                    onClick={() => navigate(`/incidents/${ev.id}`)}
-                    className="hover:bg-[#141f33]/80 hover:shadow-[inset_2px_0_0_#38bdf8] transition-all cursor-pointer group"
-                  >
-                    {/* # Index */}
-                    <td className="py-3.5 px-3 text-[#64748b]">
-                      [{String(index + 1).padStart(2, "0")}]
-                    </td>
-
-                    {/* SOURCE */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        {isHigh ? (
-                          <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                        ) : isMed ? (
-                          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                        ) : (
-                          <ShieldCheck className="w-4 h-4 text-[#38bdf8] shrink-0" />
-                        )}
-                        <div>
-                          <div className="font-bold text-white text-xs group-hover:text-[#38bdf8] transition-colors">
-                            {ev.ip}
-                          </div>
-                          <div className="text-[11px] text-[#8FA0BD]">
-                            {ev.geo?.city
-                              ? `${ev.geo.city}, ${ev.geo.country || ""}`
-                              : ev.geo?.country || "Unknown origin"}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* TOKEN */}
-                    <td className="py-3.5 px-4">
-                      <span className="inline-flex items-center gap-1.5 bg-teal-950/70 border border-teal-700/50 text-[#34d399] px-2.5 py-1 rounded-full text-[11px]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
-                        {ev.token_label || ev.token_id || "Honeytoken"}
-                      </span>
-                    </td>
-
-                    {/* FLAGS */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {primaryFlags.map((flag, fIdx) => (
-                          <span
-                            key={fIdx}
-                            className="bg-[#141c2d] border border-[#202d45] text-[#cbd5e1] px-2 py-0.5 rounded-full text-[10px]"
-                          >
-                            {flag}
-                          </span>
-                        ))}
-                        {extraCount > 0 && (
-                          <span className="bg-[#141c2d] border border-[#202d45] text-[#8FA0BD] px-1.5 py-0.5 rounded-full text-[10px]">
-                            +{extraCount}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* SCORE */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-16 h-1.5 bg-[#172236] rounded-full overflow-hidden">
-                          <div
-                            style={{ width: `${Math.min(100, ev.score || 40)}%` }}
-                            className={`h-full bg-gradient-to-r ${scoreColor} rounded-full`}
-                          />
-                        </div>
-                        <span className="font-bold text-white text-xs">{ev.score || 40}</span>
-                      </div>
-                    </td>
-
-                    {/* WHEN */}
-                    <td className="py-3.5 px-4 text-right text-[#8FA0BD] text-[11px]">
-                      {ev.time_ago || formatTimeAgo(ev.ts || ev.created_at)}
-                    </td>
-                  </tr>
-                );
+              {rows.map((incident) => {
+                const Icon = incident.score >= 70 ? AlertTriangle : incident.score >= 50 ? AlertCircle : ShieldCheck;
+                return <tr key={incident.id} onClick={() => navigate(`/incidents/${incident.id}`)} className="hover:bg-[#141f33]/80 cursor-pointer">
+                  <td className="py-3.5 px-3"><div className="flex gap-3 items-center"><Icon className="w-4 h-4 text-amber-400"/><div><strong className="text-white">{incident.ip}</strong><div className="text-[#8FA0BD]">{incident.geo?.city ? `${incident.geo.city}, ` : ""}{incident.geo?.country || "Unknown origin"}</div></div></div></td>
+                  <td className="py-3.5 px-4 text-emerald-300">{incident.token_label || incident.token_id || "Honeytoken"}</td>
+                  <td className="py-3.5 px-4 text-[#8FA0BD]">{incident.event_count || incident.events?.length || 0} events</td>
+                  <td className="py-3.5 px-4"><strong className={incident.score >= 70 ? "text-rose-400" : incident.score >= 50 ? "text-amber-300" : "text-cyan-300"}>{incident.severity || "low"} · {incident.score ?? 0}</strong></td>
+                  <td className="py-3.5 px-4 text-right text-[#8FA0BD]">{ago(incident.last_seen)}</td>
+                </tr>;
               })}
-              {filteredEvents.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-[#8FA0BD]">
-                    No incidents recorded. Traps are armed and listening for triggers.
-                  </td>
-                </tr>
-              )}
+              {!loadingEvents && rows.length === 0 && <tr><td colSpan={5} className="py-12 text-center text-[#8FA0BD]">No correlated incidents recorded.</td></tr>}
+              {loadingEvents && <tr><td colSpan={5} className="py-12 text-center text-[#8FA0BD]">Loading incidents…</td></tr>}
             </tbody>
           </table>
         </div>

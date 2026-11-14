@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Cloud, Key, Webhook, Trash2 } from "lucide-react";
 import { SpotlightCard } from "../components/SpotlightCard.jsx";
+import { CopyButton } from "../components/CopyButton.jsx";
 import { useAppData } from "../hooks/useAppData.js";
 
 const TOKEN_TYPES = [
@@ -28,11 +29,13 @@ const TOKEN_TYPES = [
 ];
 
 export function Tokens() {
-  const { tokens, createToken, deleteToken, searchQuery } = useAppData();
+  const { tokens, createToken, deleteToken, searchQuery, tokensError, isMockMode } = useAppData();
   const [selectedType, setSelectedType] = useState("aws");
   const [name, setName] = useState("");
   const [whereItLives, setWhereItLives] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [createdToken, setCreatedToken] = useState(null);
+  const [createError, setCreateError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -40,15 +43,17 @@ export function Tokens() {
 
     setSubmitting(true);
     try {
-      await createToken({
+      const created = await createToken({
         type: selectedType,
         label: name.trim(),
         context: whereItLives.trim()
       });
+      setCreatedToken(created);
+      setCreateError("");
       setName("");
       setWhereItLives("");
     } catch (err) {
-      console.error(err);
+      setCreateError(err.message || "Could not create token");
     } finally {
       setSubmitting(false);
     }
@@ -146,8 +151,18 @@ export function Tokens() {
               disabled={submitting}
               className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-black font-bold text-xs py-3 rounded-xl shadow-lg shadow-emerald-500/25 active:scale-[0.99] transition-all cursor-pointer hover:shadow-[0_0_20px_rgba(34,197,94,0.35)]"
             >
-              Plant token
+              {submitting ? "Creating..." : "Create token"}
             </button>
+            {!isMockMode && <p className="text-[11px] text-[#64748b]">The raw secret is only returned at creation. Store it now; the server keeps only its hash.</p>}
+            {createError && <p role="alert" className="text-xs text-rose-400">{createError}</p>}
+            {createdToken && (
+              <div className="rounded-xl border border-emerald-700/60 bg-emerald-950/30 p-3 space-y-2 text-xs text-emerald-100">
+                <strong>Copy this credential now. The secret is not stored in readable form and cannot be shown again.</strong>
+                <div className="flex items-start justify-between gap-2"><pre className="whitespace-pre-wrap break-all font-mono">{JSON.stringify(createdToken.value, null, 2)}</pre><CopyButton compact label="Copy credential" textToCopy={typeof createdToken.value === "string" ? createdToken.value : JSON.stringify(createdToken.value, null, 2)} /></div>
+                {createdToken.callback_url && <div className="flex items-start justify-between gap-2 break-all font-mono text-cyan-300"><span>Trap URL: {createdToken.callback_url}</span><CopyButton compact label="Copy trap URL" textToCopy={createdToken.callback_url} /></div>}
+                <button type="button" onClick={() => setCreatedToken(null)} className="text-emerald-300 underline">Dismiss</button>
+              </div>
+            )}
 
             {/* Footnote */}
             <p className="text-[11px] text-[#64748b] leading-relaxed">
@@ -172,9 +187,10 @@ export function Tokens() {
 
           {/* Token List Items */}
           <div className="space-y-3.5">
+            {tokensError && <p role="alert" className="text-xs text-rose-400">{tokensError}</p>}
             {filteredTokens.map((tok, idx) => {
               const badgeLabel =
-                tok.type === "aws" ? "AWS KEY" : tok.type === "webhook" ? "WEBHOOK" : "API KEY";
+                tok.type === "aws" ? "AWS KEY" : tok.type === "webhook" ? "WEBHOOK" : tok.type === "db" ? "DB TOKEN" : "API KEY";
               const hasHits = (tok.hits || 0) > 0;
               const hitPercent = Math.min(100, Math.max(15, ((tok.hits || 0) / 28) * 100));
 
@@ -195,7 +211,7 @@ export function Tokens() {
 
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="text-[#64748b] text-[11px] hidden sm:inline">
-                        {tok.valuePreview || tok.value?.AWS_ACCESS_KEY_ID || "AKIA..."}
+                        {tok.type === "aws" ? "AKIA… (shown once at creation)" : "Secret shown once at creation"}
                       </span>
                       {hasHits ? (
                         <span className="text-[#fb923c] font-bold text-xs">
@@ -208,7 +224,7 @@ export function Tokens() {
                         type="button"
                         onClick={() => deleteToken(tok.id)}
                         className="text-[#64748b] hover:text-rose-400 p-1.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
-                        title="Delete token"
+                        title="Revoke token"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -228,7 +244,7 @@ export function Tokens() {
                         <div className="flex-1 h-full bg-hazard-stripes-dark" />
                       </div>
                       <div className="text-[10px] font-mono-tech text-[#8FA0BD]">
-                        Hit {tok.hits} times{tok.last_hit ? `, last ${tok.last_hit}` : ""}
+                        Hit {tok.hits} times{tok.last_hit ? `, last ${Number.isNaN(new Date(tok.last_hit).getTime()) ? tok.last_hit : new Date(tok.last_hit).toLocaleString()}` : ""}
                       </div>
                     </div>
                   ) : (

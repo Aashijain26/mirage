@@ -14,31 +14,31 @@ import { useAppData } from "../hooks/useAppData.js";
 
 export function Overview() {
   const navigate = useNavigate();
-  const { events, tokens } = useAppData();
+  const { events, tokens, incidents } = useAppData();
   const [incidentIndex, setIncidentIndex] = useState(0);
 
   // Dynamic severity counts derived from live events (no hardcoded fallbacks)
   const highCount = useMemo(
-    () => events.filter((e) => (e.score ?? 0) >= 70).length,
-    [events]
+    () => incidents.filter((e) => (e.score ?? 0) >= 70).length,
+    [incidents]
   );
   const medCount = useMemo(
-    () => events.filter((e) => (e.score ?? 0) >= 50 && (e.score ?? 0) < 70).length,
-    [events]
+    () => incidents.filter((e) => (e.score ?? 0) >= 50 && (e.score ?? 0) < 70).length,
+    [incidents]
   );
   const lowCount = useMemo(
-    () => events.filter((e) => (e.score ?? 0) < 50).length,
-    [events]
+    () => incidents.filter((e) => (e.score ?? 0) < 50).length,
+    [incidents]
   );
   const totalRequests = useMemo(
     () => events.length,
     [events.length]
   );
 
-  // Latest 5 incidents derived from live events
+  // Latest correlated incidents from the persisted incident API.
   const latestIncidents = useMemo(() => {
-    if (!events || events.length === 0) return [];
-    return events.slice(0, 5).map((ev) => ({
+    if (!incidents || incidents.length === 0) return [];
+    return incidents.slice(0, 5).map((ev) => ({
       id: ev.id,
       ip: ev.ip,
       city: ev.geo?.city || ev.geo?.country || "Unknown Location",
@@ -47,7 +47,7 @@ export function Overview() {
       score: ev.score ?? 0,
       flags: Array.isArray(ev.flags) ? ev.flags : []
     }));
-  }, [events]);
+  }, [incidents]);
 
   const currentInc = latestIncidents[incidentIndex] || latestIncidents[0] || null;
 

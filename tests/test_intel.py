@@ -867,8 +867,8 @@ def test_admin_incident_summary_api(test_db):
         app.dependency_overrides.clear()
 
 
-def test_admin_decoys_api(test_db):
-    """Verify POST /admin/decoys returns stack-tailored decoy placement suggestions."""
+def test_admin_decoy_suggestions_api(test_db):
+    """Verify the explicit placement-suggestions route returns stack-tailored suggestions."""
     from starlette.testclient import TestClient
     from app.main import app
     from app.database import get_db
@@ -879,12 +879,12 @@ def test_admin_decoys_api(test_db):
 
     try:
         # Unauthorized without token
-        unauth = client.post("/admin/decoys", json={"stack": "FastAPI React", "token_types": ["aws", "api_key"]})
+        unauth = client.post("/admin/decoys/suggestions", json={"stack": "FastAPI React", "token_types": ["aws", "api_key"]})
         assert unauth.status_code == 401
 
         # Authorized
         resp = client.post(
-            "/admin/decoys",
+            "/admin/decoys/suggestions",
             json={"stack": "FastAPI + React on AWS", "token_types": ["aws", "api_key", "db"]},
             headers={"Authorization": "Bearer test-secret-token"}
         )
@@ -897,6 +897,88 @@ def test_admin_decoys_api(test_db):
             assert "file_path" in d
             assert "comment" in d
             assert "placement_note" in d
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_planted_decoy_persists_and_revoke_disables_trap(test_db):
+    """Tracked decoys persist; deleting one revokes the linked callback token."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+    from app.models import PlantedDecoy
+
+    os.environ["ADMIN_TOKEN"] = "test-secret-token"
+    app.dependency_overrides[get_db] = lambda: test_db
+    client = TestClient(app)
+    try:
+        created = client.post(
+            "/admin/decoys",
+            json={"type": "env", "label": "test env", "host": "repo", "path": "/.env"},
+            headers={"Authorization": "Bearer test-secret-token"},
+        )
+        assert created.status_code == 200
+        payload = created.json()
+        assert payload["value"].startswith("snare_")
+        assert payload["callback_url"].endswith(f"/t/{payload['honeytoken_id']}/hook")
+
+        listing = client.get("/admin/decoys", headers={"Authorization": "Bearer test-secret-token"})
+        assert listing.status_code == 200
+        row = next(item for item in listing.json() if item["id"] == payload["id"])
+        assert row["hits"] == 0
+        assert "value" not in row
+
+        revoked = client.delete(f"/admin/decoys/{payload['id']}", headers={"Authorization": "Bearer test-secret-token"})
+        assert revoked.status_code == 200
+        trap = client.get(payload["callback_url"].replace("http://testserver", ""))
+        assert trap.status_code == 404
+        record = test_db.query(PlantedDecoy).filter(PlantedDecoy.id == payload["id"]).one()
+        assert record.is_active is False
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_live_dashboard_contract_token_to_incident_flow(test_db):
+    """Exercise token creation, public trap, live event, token metrics, incident, and revocation."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+
+    os.environ["ADMIN_TOKEN"] = "test-secret-token"
+    app.dependency_overrides[get_db] = lambda: test_db
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer test-secret-token"}
+    try:
+        created = client.post("/admin/tokens", json={
+            "type": "aws", "label": "end-to-end", "context": "test fixture"
+        }, headers=headers)
+        assert created.status_code == 200
+        token = created.json()
+        key = token["value"]["AWS_ACCESS_KEY_ID"]
+        assert key.startswith("AKIA") and len(key) == 20
+        assert token["value"]["AWS_ENDPOINT_URL"].endswith(f"/aws/{token['id']}")
+
+        trap = client.get(f"/aws/{token['id']}/s3/list-buckets", headers={"User-Agent": "boto3/test"})
+        assert trap.status_code == 200
+        assert "ListAllMyBucketsResult" in trap.text
+
+        token_rows = client.get("/admin/tokens", headers=headers).json()
+        stored = next(row for row in token_rows if row["id"] == token["id"])
+        assert stored["context"] == "test fixture"
+        assert stored["hits"] == 1
+
+        event_rows = client.get("/admin/events", headers=headers).json()
+        event = next(row for row in event_rows if row["token_id"] == token["id"])
+        assert event["token_label"] == "end-to-end"
+        assert event["method"] == "GET"
+
+        incident_rows = client.get("/admin/incidents", headers=headers).json()
+        incident = next(row for row in incident_rows if row["ip"] == "testclient")
+        assert incident["event_count"] == 1
+        assert incident["events"][0]["id"] == event["id"]
+
+        assert client.delete(f"/admin/tokens/{token['id']}", headers=headers).status_code == 200
+        assert client.get(f"/aws/{token['id']}/s3/list-buckets").status_code == 404
     finally:
         app.dependency_overrides.clear()
 

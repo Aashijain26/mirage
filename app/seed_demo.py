@@ -4,11 +4,11 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, engine, init_db
 from app.models import Event, Honeytoken, Incident
 from app.honeytoken_service import token_public_id
 
-Base.metadata.create_all(bind=engine)
+init_db()
 
 DEMO_TOKENS = [
     ("Demo decoy AWS", "aws"),

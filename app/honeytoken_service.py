@@ -25,12 +25,12 @@ def token_public_id(token):
     return f"tok-{token.token_type}-{token.id}"
 
 
-def generate_honeytoken(db, name, token_type, callback_base_url=None):
+def generate_honeytoken(db, name, token_type, callback_base_url=None, context=None):
     token_type = (token_type or "api_key").lower()
     if token_type not in {"aws", "api_key", "db", "webhook"}:
         raise ValueError("Unsupported honeytoken type")
 
-    record = Honeytoken(name=name, token_hash="pending", token_type=token_type)
+    record = Honeytoken(name=name, token_hash="pending", token_type=token_type, context=context)
     db.add(record)
     db.flush()
     public_id = token_public_id(record)
