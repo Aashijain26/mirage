@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.github_placement import get_last_automation_result, github_automation_config, run_auto_plant_once
 from app.intel.summarizer import summarize_incident as run_summarize_incident
 from app.intel.decoys import generate_decoys as run_generate_decoys
 from app.honeytoken_service import generate_honeytoken, token_public_id
@@ -307,3 +308,48 @@ def get_decoy_suggestions(
     _: bool = Depends(require_admin),
 ):
     return run_generate_decoys(body.stack, body.token_types)
+
+
+@router.get("/automation/status")
+def automation_status(
+    _: bool = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    config = github_automation_config()
+    planted = None
+    if config["configured"]:
+        planted = db.query(PlantedDecoy).filter(
+            PlantedDecoy.host == f"github:{config['repository']}",
+            PlantedDecoy.path == config["path"],
+            PlantedDecoy.is_active.is_(True),
+        ).first()
+    if not config["enabled"]:
+        status_text = "disabled"
+    elif not config["configured"]:
+        status_text = "needs_configuration"
+    elif not os.getenv("PUBLIC_BASE_URL", "").startswith("https://"):
+        status_text = "needs_public_https_url"
+    else:
+        status_text = "planted" if planted else "waiting_to_plant"
+    last_run = get_last_automation_result()
+    if not planted and last_run.get("status") not in {"not_run", "disabled", "already_planted"}:
+        status_text = last_run["status"]
+    return {
+        "provider": "github",
+        "status": status_text,
+        "enabled": config["enabled"],
+        "configured": config["configured"],
+        "repository": config["repository"],
+        "path": config["path"],
+        "interval_hours": config["interval_hours"],
+        "last_run": last_run.get("checked_at"),
+    }
+
+
+@router.post("/automation/run")
+def run_automation_now(
+    _: bool = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Run a single placement attempt for setup and diagnostics."""
+    return run_auto_plant_once(db)

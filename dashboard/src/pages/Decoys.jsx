@@ -36,7 +36,7 @@ const DECOY_TYPES = [
 ];
 
 export function Decoys() {
-  const { decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys, decoysError, isMockMode } = useAppData();
+  const { decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys, decoysError, automationStatus, isMockMode } = useAppData();
   const [selectedType, setSelectedType] = useState("ssh");
   const [label, setLabel] = useState("");
   const [host, setHost] = useState("");
@@ -198,6 +198,14 @@ export function Decoys() {
             <span className="text-xs font-mono-tech text-[#64748b]">
               {decoys.length} live
             </span>
+          </div>
+
+          <div className="rounded-lg border border-[#202e47] bg-[#0d1422] p-3 text-[11px] font-mono-tech text-[#8FA0BD]">
+            <span className="text-white">GitHub auto-planting: </span>
+            <span className={automationStatus.status === "planted" ? "text-emerald-400" : "text-amber-300"}>{automationStatus.status?.replaceAll("_", " ") || "checking"}</span>
+            {automationStatus.repository && <span> · {automationStatus.repository}:{automationStatus.path}</span>}
+            {automationStatus.status === "needs_configuration" && <span> · Add the GitHub settings to the backend environment and enable AUTO_PLANT_ENABLED.</span>}
+            {automationStatus.status === "needs_public_https_url" && <span> · Set PUBLIC_BASE_URL to the deployed HTTPS backend URL.</span>}
           </div>
 
           {/* Decoy List Items */}

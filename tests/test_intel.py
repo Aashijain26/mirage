@@ -11,6 +11,7 @@ Validates:
 - Secret safety: redaction of tokens and keys in summaries and alerts
 """
 
+import base64
 import json
 import os
 import time
@@ -979,6 +980,53 @@ def test_live_dashboard_contract_token_to_incident_flow(test_db):
 
         assert client.delete(f"/admin/tokens/{token['id']}", headers=headers).status_code == 200
         assert client.get(f"/aws/{token['id']}/s3/list-buckets").status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_github_automation_plants_one_decoy_and_is_idempotent(test_db, monkeypatch):
+    """Opt-in auto planting writes one callback decoy and will not create duplicates."""
+    from app.github_placement import run_auto_plant_once
+    from app.models import PlantedDecoy
+    import app.github_placement as placement
+
+    monkeypatch.setenv("AUTO_PLANT_ENABLED", "true")
+    monkeypatch.setenv("GITHUB_TOKEN", "github-token-for-test")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "example/project")
+    monkeypatch.setenv("GITHUB_DECOY_PATH", "mirage-decoys/.env")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://mirage.example")
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    get_response = MagicMock(status_code=404)
+    put_response = MagicMock(status_code=201)
+
+    with patch.object(placement.requests, "get", return_value=get_response), patch.object(
+        placement.requests, "put", return_value=put_response
+    ) as mock_put:
+        first = run_auto_plant_once(test_db)
+        assert first["status"] == "planted"
+        assert mock_put.call_count == 1
+        content = base64.b64decode(mock_put.call_args.kwargs["json"]["content"]).decode()
+        assert "PARTNER_API_KEY=snare_" in content
+        assert "https://mirage.example/t/tok-webhook-" in content
+
+        second = run_auto_plant_once(test_db)
+        assert second["status"] == "already_planted"
+        assert mock_put.call_count == 1
+        assert test_db.query(PlantedDecoy).filter(PlantedDecoy.is_active.is_(True)).count() == 1
+
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+    app.dependency_overrides[get_db] = lambda: test_db
+    try:
+        client = TestClient(app)
+        decoy = test_db.query(PlantedDecoy).filter(PlantedDecoy.id == first["decoy_id"]).one()
+        token = test_db.query(Honeytoken).filter(Honeytoken.id == decoy.honeytoken_id).one()
+        callback_hit = client.get(f"/t/tok-{token.token_type}-{token.id}/hook")
+        assert callback_hit.status_code == 200
+        assert test_db.query(Event).filter(Event.honeytoken_id == decoy.honeytoken_id).count() == 1
     finally:
         app.dependency_overrides.clear()
 

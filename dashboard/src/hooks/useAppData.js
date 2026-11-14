@@ -14,6 +14,7 @@ import {
   createToken as apiCreateToken,
   deleteToken as apiDeleteToken,
   getDecoys as apiGetDecoys,
+  getAutomationStatus,
   createDecoy as apiCreateDecoy,
   deleteDecoy as apiDeleteDecoy,
   summarize,
@@ -32,6 +33,7 @@ export function AppDataProvider({ children }) {
   const [loadingDecoys, setLoadingDecoys] = useState(true);
   const [tokensError, setTokensError] = useState(null);
   const [decoysError, setDecoysError] = useState(null);
+  const [automationStatus, setAutomationStatus] = useState({ status: "loading" });
   const [incidentsError, setIncidentsError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -79,17 +81,29 @@ export function AppDataProvider({ children }) {
     }
   }, []);
 
+  const refreshAutomationStatus = useCallback(async () => {
+    try {
+      setAutomationStatus(await getAutomationStatus());
+    } catch (err) {
+      setAutomationStatus({ status: "unavailable", error: err.message || "Could not load automation status" });
+    }
+  }, []);
+
   useEffect(() => {
     refreshTokens();
     refreshIncidents();
     refreshDecoys();
-  }, [refreshTokens, refreshDecoys, refreshIncidents]);
+    refreshAutomationStatus();
+  }, [refreshTokens, refreshDecoys, refreshIncidents, refreshAutomationStatus]);
 
   useEffect(() => {
     if (isMockMode) return undefined;
-    const timer = setInterval(refreshIncidents, 5000);
+    const timer = setInterval(() => {
+      refreshIncidents();
+      refreshAutomationStatus();
+    }, 30000);
     return () => clearInterval(timer);
-  }, [refreshIncidents]);
+  }, [refreshIncidents, refreshAutomationStatus]);
 
   const tokenMap = useMemo(() => {
     const map = new Map();
@@ -198,6 +212,7 @@ export function AppDataProvider({ children }) {
 
     decoys,
     decoysError,
+    automationStatus,
     loadingDecoys,
     refreshDecoys,
     createDecoy: handleCreateDecoy,

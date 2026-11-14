@@ -1,12 +1,17 @@
 """FastAPI application for the Snare honeytoken demo."""
 
+import asyncio
+import logging
 import os
 import re
+from contextlib import asynccontextmanager
 
 # Load .env before modules read settings during import.
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,15 +22,43 @@ from sqlalchemy import text
 from app import models
 from app.database import engine, get_db, init_db
 from app.detection import detect_honeytoken_usage, token_database_id
+from app.github_placement import github_automation_config, run_auto_plant_once
 from app.honeytoken_service import generate_honeytoken
 from app.routes.admin import require_admin, router as admin_router
 
 init_db()
 
+
+async def _auto_plant_scheduler():
+    while True:
+        config = github_automation_config()
+        if config["enabled"]:
+            result = await asyncio.to_thread(run_auto_plant_once)
+            if result.get("status") not in {"already_planted", "disabled"}:
+                logger.info("Mirage automatic planting result: %s", result.get("status"))
+            interval = config["interval_hours"] * 3600
+        else:
+            interval = 3600
+        await asyncio.sleep(interval)
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    task = asyncio.create_task(_auto_plant_scheduler())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
 app = FastAPI(
     title="Mirage Honeytoken Monitor",
     description="A deceptive credential generation and detection platform",
     version="2.0.0",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,

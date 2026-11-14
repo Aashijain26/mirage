@@ -109,5 +109,25 @@ The `/t/{token_id}/hook` and `/aws/{token_id}/...` routes are public by design s
 - Admin: `POST /admin/auth`, `GET/POST /admin/tokens`, `DELETE /admin/tokens/{id}`
 - Telemetry: `GET /admin/events`, `GET /admin/incidents`, `POST /admin/incidents/summary`
 - Decoy inventory: `GET/POST /admin/decoys`, `DELETE /admin/decoys/{id}`
+- Automation: `GET /admin/automation/status`, `POST /admin/automation/run`
 
 All `/admin/*` routes require `Authorization: Bearer <ADMIN_TOKEN>`.
+
+## Automatic GitHub decoy planting
+
+The backend can automatically create one fake webhook credential and commit it to a dedicated `.env` file in the configured GitHub repository when the service starts. It will not overwrite an existing file, and a database record prevents duplicate planting on restarts. The default target is `Aashijain26/mirage` at `mirage-decoys/.env`; change these settings if you want another repository or path.
+
+Create a GitHub fine-grained personal access token restricted to the target repository, with **Contents: Read and write** permission. Add these backend environment variables in Render:
+
+| Name | Value |
+| --- | --- |
+| `GITHUB_TOKEN` | The fine-grained token; keep it only in backend secrets |
+| `GITHUB_REPOSITORY` | Repository in `owner/name` form |
+| `GITHUB_DECOY_PATH` | A new, dedicated file path; default is `mirage-decoys/.env` |
+| `AUTO_PLANT_ENABLED` | `true` |
+| `AUTO_PLANT_INTERVAL_HOURS` | `24` |
+| `PUBLIC_BASE_URL` | Your public HTTPS backend URL |
+
+After the backend restarts, check **Decoys → GitHub auto-planting** in the dashboard. You can also call `GET /admin/automation/status` while signed in. A repository file must be visible to the people you want to discover it; a private repository is not bait for outside attackers.
+
+The generated credential is cryptographically random; an LLM should not invent credentials. The planted file includes a Mirage callback URL. Mirage can alert when a request reaches that URL. Merely copying or using an ordinary API-key string against some unrelated vendor does not send Mirage a request, so that alone cannot trigger a Mirage alert.

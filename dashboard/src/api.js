@@ -87,6 +87,12 @@ export async function getDecoys() {
   return normalizeList(res.data, "decoys");
 }
 
+export async function getAutomationStatus() {
+  if (isMockMode) return { provider: "github", status: "mock_mode", enabled: false, configured: false };
+  const res = await apiClient.get(ENDPOINTS.automationStatus);
+  return res.data;
+}
+
 export async function createDecoy(body) {
   if (isMockMode) return mockCreateDecoy(body);
   const res = await apiClient.post(ENDPOINTS.decoys, body);
