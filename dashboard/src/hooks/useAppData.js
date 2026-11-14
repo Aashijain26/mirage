@@ -125,13 +125,15 @@ export function AppDataProvider({ children }) {
   useEffect(() => {
     if (isMockMode) return undefined;
     const timer = setInterval(() => {
+      refreshTokens();
+      refreshDecoys();
       refreshIncidents();
       refreshAutomationStatus();
       refreshLeakAlerts();
       refreshLeakResponseStatus();
     }, 30000);
     return () => clearInterval(timer);
-  }, [refreshIncidents, refreshAutomationStatus, refreshLeakAlerts, refreshLeakResponseStatus]);
+  }, [refreshTokens, refreshDecoys, refreshIncidents, refreshAutomationStatus, refreshLeakAlerts, refreshLeakResponseStatus]);
 
   const checkLeakAlertsNow = useCallback(async () => {
     const result = await apiCheckLeakAlertsNow();
