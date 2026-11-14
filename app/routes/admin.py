@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from urllib.parse import urlsplit
 
 from app.database import get_db
 from app.github_placement import (
-    create_demo_secret_alerts,
     get_last_automation_result,
     get_last_leak_scan_result,
     github_automation_config,
@@ -51,7 +51,7 @@ class SummaryRequest(BaseModel):
 class DecoyRequest(BaseModel):
     type: str = Field(min_length=1, max_length=30)
     label: str = Field(min_length=1, max_length=120)
-    host: str = Field(default="web-server-01", max_length=255)
+    host: str = Field(default="manual-entry", max_length=500)
     path: str = Field(min_length=1, max_length=500)
 
 
@@ -243,7 +243,10 @@ def list_decoys(
     _: bool = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    rows = db.query(PlantedDecoy).order_by(PlantedDecoy.id.desc()).limit(500).all()
+    prior_demo_tokens = db.query(GitHubSecretAlert.honeytoken_id).filter(GitHubSecretAlert.is_demo.is_(True))
+    rows = db.query(PlantedDecoy).filter(
+        ~PlantedDecoy.honeytoken_id.in_(prior_demo_tokens)
+    ).order_by(PlantedDecoy.id.desc()).limit(500).all()
     result = []
     for row in rows:
         token = db.query(Honeytoken).filter(Honeytoken.id == row.honeytoken_id).first()
@@ -269,17 +272,27 @@ def create_decoy(
     db: Session = Depends(get_db),
 ):
     decoy_type = body.type.strip().lower()
-    if decoy_type not in {"ssh", "env", "db", "backup"}:
+    if decoy_type not in {"aws", "api", "webhook", "ssh", "env", "db", "backup"}:
         raise HTTPException(status_code=422, detail="Unsupported decoy type")
     label = body.label.strip()
     host = body.host.strip()
     path = body.path.strip()
-    if not label or not host or not path:
-        raise HTTPException(status_code=422, detail="Label, host, and path must not be blank")
-    token_type = {"ssh": "api_key", "env": "api_key", "db": "db", "backup": "webhook"}[decoy_type]
+    if not label or not host:
+        raise HTTPException(status_code=422, detail="Label and placement host or URL must not be blank")
+    if host.startswith(("https://", "http://")):
+        parsed = urlsplit(host)
+        if not parsed.hostname:
+            raise HTTPException(status_code=422, detail="Enter a valid http or https placement URL")
+        path = host[:500]
+        host = parsed.netloc[:255]
+    path = path or "/"
+    token_type = {
+        "aws": "aws", "api": "api_key", "webhook": "webhook",
+        "ssh": "api_key", "env": "api_key", "db": "db", "backup": "webhook",
+    }[decoy_type]
     try:
         base_url = os.getenv("PUBLIC_BASE_URL") or str(request.base_url).rstrip("/")
-        secret = generate_honeytoken(db, label, token_type, base_url, f"{host}:{path}")
+        secret = generate_honeytoken(db, label, token_type, base_url, f"{host}:{path}"[:500])
         row = PlantedDecoy(honeytoken_id=int(secret["id"].rsplit("-", 1)[1]), decoy_type=decoy_type,
                            label=label, host=host, path=path)
         db.add(row)
@@ -352,7 +365,6 @@ def automation_status(
         "interval_hours": config["interval_hours"],
         "last_run": last_run.get("checked_at"),
         "leak_response_enabled": github_leak_response_config()["enabled"],
-        "leak_demo_enabled": github_leak_response_config()["demo_enabled"],
     }
 
 
@@ -378,7 +390,6 @@ def leak_response_status(_: bool = Depends(require_admin)):
     return {
         "enabled": config["enabled"],
         "configured": config["configured"],
-        "demo_enabled": config["demo_enabled"],
         "repository": config["repository"],
         "poll_interval_seconds": config["poll_interval_seconds"],
         "status": status_text,
@@ -392,7 +403,9 @@ def get_leak_alerts(
     _: bool = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    rows = db.query(GitHubSecretAlert).order_by(GitHubSecretAlert.created_at.desc()).limit(200).all()
+    rows = db.query(GitHubSecretAlert).filter(
+        GitHubSecretAlert.is_demo.is_(False)
+    ).order_by(GitHubSecretAlert.created_at.desc()).limit(200).all()
     base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
     results = []
     for row in rows:
@@ -424,17 +437,3 @@ def get_leak_alerts(
 def check_github_alerts_now(_: bool = Depends(require_admin)):
     """Trigger an immediate scan of the configured repository."""
     return poll_github_secret_alerts_once()
-
-
-@router.post("/leak-response/demo")
-def create_leak_demo_cases(
-    _: bool = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
-    """Plant three safe synthetic cases; only enabled by LEAK_DEMO_ENABLED."""
-    result = create_demo_secret_alerts(db)
-    if result.get("status") == "demo_disabled":
-        raise HTTPException(status_code=403, detail="Safe leak demo cases are disabled")
-    if result.get("status") == "needs_configuration":
-        raise HTTPException(status_code=503, detail="Configure the GitHub repository and token first")
-    return result

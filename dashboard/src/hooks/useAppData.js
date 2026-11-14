@@ -18,7 +18,6 @@ import {
   getLeakResponseStatus,
   getLeakAlerts,
   checkLeakAlertsNow as apiCheckLeakAlertsNow,
-  createLeakDemoCases as apiCreateLeakDemoCases,
   createDecoy as apiCreateDecoy,
   deleteDecoy as apiDeleteDecoy,
   summarize,
@@ -141,12 +140,6 @@ export function AppDataProvider({ children }) {
     return result;
   }, [refreshDecoys, refreshLeakAlerts, refreshLeakResponseStatus]);
 
-  const createLeakDemoCases = useCallback(async () => {
-    const result = await apiCreateLeakDemoCases();
-    await Promise.all([refreshLeakAlerts(), refreshDecoys(), refreshLeakResponseStatus()]);
-    return result;
-  }, [refreshDecoys, refreshLeakAlerts, refreshLeakResponseStatus]);
-
   const tokenMap = useMemo(() => {
     const map = new Map();
     tokens.forEach((t) => {
@@ -260,7 +253,6 @@ export function AppDataProvider({ children }) {
     leakAlertsError,
     refreshLeakAlerts,
     checkLeakAlertsNow,
-    createLeakDemoCases,
     loadingDecoys,
     refreshDecoys,
     createDecoy: handleCreateDecoy,

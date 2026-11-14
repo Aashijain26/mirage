@@ -178,7 +178,6 @@ def github_leak_response_config():
     repository = os.getenv("GITHUB_REPOSITORY", DEFAULT_REPOSITORY).strip()
     token = os.getenv("GITHUB_TOKEN", "").strip()
     enabled = os.getenv("GITHUB_LEAK_RESPONSE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-    demo_enabled = os.getenv("LEAK_DEMO_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     interval = os.getenv("GITHUB_ALERT_POLL_INTERVAL_SECONDS", "60").strip()
     try:
         poll_interval = min(max(int(interval), 30), 3600)
@@ -187,7 +186,6 @@ def github_leak_response_config():
     valid_repo = bool(re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository))
     return {
         "enabled": enabled,
-        "demo_enabled": demo_enabled,
         "configured": bool(token and valid_repo),
         "repository": repository if valid_repo else "",
         "token": token,
@@ -437,32 +435,3 @@ def poll_github_secret_alerts_once(db: Session | None = None):
     with _LEAK_STATUS_LOCK:
         _LAST_LEAK_RESULT = {**result, "checked_at": datetime.now(timezone.utc).isoformat()}
     return result
-
-
-def create_demo_secret_alerts(db: Session):
-    """Create three clearly labeled synthetic cases for a controlled demo."""
-    config = github_leak_response_config()
-    if not config["demo_enabled"]:
-        return {"status": "demo_disabled", "results": []}
-    if not config["configured"]:
-        return {"status": "needs_configuration", "results": []}
-    base_id = "demo-v1"
-    cases = [
-        {"number": f"{base_id}-aws", "secret_type": "aws_access_key_id", "html_url": ""},
-        {"number": f"{base_id}-github", "secret_type": "github_personal_access_token", "html_url": ""},
-        {"number": f"{base_id}-generic", "secret_type": "generic_api_key", "html_url": ""},
-    ]
-    results = []
-    for alert in cases:
-        results.append(_write_alert_decoy(
-            db, config, alert,
-            source_path=f"demo-cases/{_alert_type_slug(alert['secret_type'])}.env",
-            source_line=1,
-            is_demo=True,
-            notify=False,
-        ))
-    planted = [item for item in results if item.get("status") == "planted"]
-    if planted:
-        from app.alerts import send_leak_alerts
-        send_leak_alerts(planted)
-    return {"status": "completed", "results": results}

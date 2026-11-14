@@ -10,7 +10,6 @@ export const ENDPOINTS = {
   leakResponseStatus: "/admin/leak-response/status",
   leakAlerts: "/admin/leak-alerts",
   checkLeakAlerts: "/admin/leak-response/check-now",
-  demoLeakAlerts: "/admin/leak-response/demo",
   health: "/health"
 };
 

@@ -94,7 +94,7 @@ export async function getAutomationStatus() {
 }
 
 export async function getLeakResponseStatus() {
-  if (isMockMode) return { enabled: false, configured: false, demo_enabled: true, status: "mock_mode" };
+  if (isMockMode) return { enabled: false, configured: false, status: "mock_mode" };
   const res = await apiClient.get(ENDPOINTS.leakResponseStatus);
   return res.data;
 }
@@ -108,12 +108,6 @@ export async function getLeakAlerts() {
 export async function checkLeakAlertsNow() {
   if (isMockMode) return { status: "mock_mode", results: [] };
   const res = await apiClient.post(ENDPOINTS.checkLeakAlerts);
-  return res.data;
-}
-
-export async function createLeakDemoCases() {
-  if (isMockMode) return { status: "mock_mode", results: [] };
-  const res = await apiClient.post(ENDPOINTS.demoLeakAlerts);
   return res.data;
 }
 

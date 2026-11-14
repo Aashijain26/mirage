@@ -1,37 +1,58 @@
 import React, { useState } from "react";
-import { Key, FileCode, Database, Archive, Trash2, RefreshCw, FlaskConical } from "lucide-react";
+import { Key, FileCode, Database, Archive, Trash2, RefreshCw, Cloud, Webhook } from "lucide-react";
 import { SpotlightCard } from "../components/SpotlightCard.jsx";
 import { CopyButton } from "../components/CopyButton.jsx";
 import { useAppData } from "../hooks/useAppData.js";
 
 const DECOY_TYPES = [
   {
+    id: "aws",
+    label: "Fake AWS credentials",
+    desc: "An AWS-shaped key with a Mirage endpoint",
+    icon: Cloud,
+    tag: "[01]"
+  },
+  {
+    id: "api",
+    label: "Fake API key",
+    desc: "A random Mirage key with its own trap URL",
+    icon: Key,
+    tag: "[02]"
+  },
+  {
+    id: "webhook",
+    label: "Webhook / website API",
+    desc: "A fake integration credential to plant manually",
+    icon: Webhook,
+    tag: "[03]"
+  },
+  {
     id: "ssh",
     label: "Fake SSH key",
     desc: "A private key that should never move",
     icon: Key,
-    tag: "[01]"
+    tag: "[04]"
   },
   {
     id: "env",
     label: "Fake .env",
     desc: "Credentials file left in the open",
     icon: FileCode,
-    tag: "[02]"
+    tag: "[05]"
   },
   {
     id: "db",
     label: "Fake DB dump",
     desc: "A dump nobody should download",
     icon: Database,
-    tag: "[03]"
+    tag: "[06]"
   },
   {
     id: "backup",
     label: "Fake backup",
     desc: "An archive worth poking at",
     icon: Archive,
-    tag: "[04]"
+    tag: "[07]"
   }
 ];
 
@@ -39,7 +60,7 @@ export function Decoys() {
   const {
     decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys, decoysError,
     automationStatus, leakResponseStatus, leakAlerts, leakAlertsError,
-    checkLeakAlertsNow, createLeakDemoCases, refreshLeakAlerts, isMockMode
+    checkLeakAlertsNow, refreshLeakAlerts, isMockMode
   } = useAppData();
   const [selectedType, setSelectedType] = useState("ssh");
   const [label, setLabel] = useState("");
@@ -77,8 +98,8 @@ export function Decoys() {
       const created = await createDecoy({
         type: selectedType,
         label: label.trim(),
-        host: host.trim() || "web-server-01",
-        path: path.trim() || `/srv/app/${label.trim()}`
+        host: host.trim() || "manual-entry",
+        path: path.trim() || "/"
       });
       setCreatedDecoy(created);
       setError("");
@@ -115,7 +136,7 @@ export function Decoys() {
               </h2>
             </div>
             <p className="text-xs text-[#8FA0BD]">
-              Create a tracked honeytoken and record where you planted it. Mirage detects requests to its trap URL, not file reads.
+              Choose the fake credential type, then enter where you plan to place it. Mirage makes the credential and a trap URL. To create an event, use that trap URL; simply opening the website/location you typed does not trigger Mirage.
             </p>
           </div>
 
@@ -167,24 +188,24 @@ export function Decoys() {
 
             {/* Field: Host */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Host</label>
+              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Where will you plant it? (host or URL)</label>
               <input
                 type="text"
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                placeholder="build-runner-03"
+                placeholder="build-runner-03 or https://your-site.example/api"
                 className="w-full bg-[#141d2f] border border-[#202e47] focus:border-[#38bdf8] focus:ring-2 focus:ring-[#38bdf8]/20 focus:outline-none rounded-xl px-4 py-2.5 text-xs text-white placeholder-[#606d85] font-mono-tech transition-colors shadow-inner"
               />
             </div>
 
             {/* Field: Path */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Path</label>
+              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Path or note (optional)</label>
               <input
                 type="text"
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                placeholder="/root/.ssh/id_rsa"
+                placeholder="/settings/integrations"
                 className="w-full bg-[#141d2f] border border-[#202e47] focus:border-[#38bdf8] focus:ring-2 focus:ring-[#38bdf8]/20 focus:outline-none rounded-xl px-4 py-2.5 text-xs text-white placeholder-[#606d85] font-mono-tech transition-colors shadow-inner"
               />
             </div>
@@ -249,13 +270,6 @@ export function Decoys() {
                   <RefreshCw className="h-3 w-3" /> Check GitHub now
                 </button>
               )}
-              {leakResponseStatus.demo_enabled && (
-                <button type="button" disabled={automationBusy || isMockMode}
-                  onClick={() => runLeakAction(createLeakDemoCases)}
-                  className="inline-flex items-center gap-1.5 rounded border border-emerald-700 px-2.5 py-1.5 text-[10px] text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-50">
-                  <FlaskConical className="h-3 w-3" /> Create 3 safe demo cases
-                </button>
-              )}
             </div>
           </div>
 
@@ -269,7 +283,6 @@ export function Decoys() {
               <div key={alert.id} className="border-t border-[#202e47] pt-2 text-[10px] font-mono-tech text-[#8FA0BD] space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-white">{alert.secret_type}</span>
-                  {alert.is_demo && <span className="rounded bg-amber-950 px-1.5 py-0.5 text-amber-300">SIMULATED</span>}
                   <span>· {alert.status}</span>
                   <span>· {alert.hits} hits</span>
                 </div>
