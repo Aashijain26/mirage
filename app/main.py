@@ -3,10 +3,16 @@
 import os
 import re
 
+# Load .env before modules read settings during import.
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app import models
 from app.database import Base, engine, get_db
@@ -49,7 +55,12 @@ def home():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    return {"status": "healthy", "database": "connected"}
 
 
 @app.post("/simulate-use")
@@ -83,6 +94,12 @@ async def _trap(token_ref: str, request: Request, db: Session, path_suffix: str 
     if token_pk is None:
         raise HTTPException(status_code=404, detail="Unknown honeytoken trap")
 
+    token = db.query(models.Honeytoken).filter(models.Honeytoken.id == token_pk).first()
+    if token is None or not token.is_active:
+        raise HTTPException(status_code=404, detail="Unknown or revoked honeytoken trap")
+    if request.url.path.startswith("/aws/") and token.token_type != "aws":
+        raise HTTPException(status_code=404, detail="Unknown AWS honeytoken trap")
+
     # The AWS access key in a signed request also embeds the token record id.
     authorization = request.headers.get("authorization", "")
     key_match = re.search(r"Credential=(AKIA[0-9A-Z]{16})/", authorization)
@@ -100,7 +117,9 @@ async def _trap(token_ref: str, request: Request, db: Session, path_suffix: str 
     )
     if not result.get("detected"):
         raise HTTPException(status_code=404, detail="Unknown or revoked honeytoken trap")
-    if "/aws/" in request.url.path and request.method in {"GET", "HEAD"}:
+    if request.method == "HEAD":
+        return Response(status_code=200)
+    if "/aws/" in request.url.path and request.method == "GET":
         return _s3_response()
     return {"ok": True, "request_id": result["alert_id"]}
 

@@ -190,10 +190,12 @@ def detect_honeytoken_usage(
     try:
         past_alerts = db.query(Alert).filter(
             Alert.source_ip == clean_ip,
-            Alert.created_at >= cutoff_time
+            Alert.created_at >= cutoff_time,
+            Alert.id != alert.id,
         ).all()
 
-        distinct_token_ids = set()
+        # Include this request's token once; history contains only prior requests.
+        distinct_token_ids = {honeytoken.id}
         for pa in past_alerts:
             distinct_token_ids.add(pa.honeytoken_id)
             history_records.append({
@@ -269,6 +271,7 @@ def detect_honeytoken_usage(
                         # Update incident attributes
                         db_incident.event_count += 1
                         db_incident.last_seen = now_utc
+                        db_incident.geo = geo_data
                         db_incident.score = max(db_incident.score, event_score)
 
                         # Merge and deduplicate flags
@@ -357,9 +360,10 @@ def detect_honeytoken_usage(
                         "last_seen": new_inc.last_seen.isoformat(),
                     }
 
-            except Exception as exc:
-                logger.error("DB Incident update failed, using in-memory tracker: %s", exc)
-                IncidentModel = None  # Fall back to in-memory store
+            except Exception:
+                db.rollback()
+                logger.exception("Persistent incident correlation failed")
+                raise
 
         if IncidentModel is None:
             # In-memory Incident Tracker

@@ -9,6 +9,7 @@ HARD RULES ENFORCED:
 """
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 # Patterns matching sensitive tokens, AWS keys, Stripe keys, passwords, bearer tokens
@@ -59,7 +60,7 @@ def sanitize_headers(headers: Any) -> dict:
     - Redacts any remaining secret patterns from values.
     - Limits header name and value lengths.
     """
-    if not headers or not isinstance(headers, dict):
+    if not headers or not isinstance(headers, Mapping):
         return {}
 
     sanitized = {}
