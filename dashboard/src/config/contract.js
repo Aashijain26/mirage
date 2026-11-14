@@ -16,6 +16,7 @@ export const SEVERITY_RANKS = {
 
 export const FLAG_DESCRIPTIONS = {
   scripted_ua: "Automated tooling detected in user agent",
+  suspicious_request: "Reconnaissance path, hosting or proxy origin, rapid requests, or off-hours activity",
   multi_token_probe: "Probed multiple honeytokens within 10 minutes",
   hosting_ip: "Origin is a hosting or datacenter network",
   proxy_ip: "Origin is a known proxy or VPN",
@@ -27,12 +28,13 @@ export const BASE_SCORE_EXPLANATION =
   "Base score 40: any use of a honeytoken is suspicious";
 
 export const FLAG_SCORE_POINTS = {
-  scripted_ua: 20,
+  scripted_ua: 15,
+  suspicious_request: 15,
   multi_token_probe: 25,
-  hosting_ip: 15,
-  proxy_ip: 15,
-  rapid_fire: 20,
-  off_hours: 5
+  hosting_ip: 0,
+  proxy_ip: 0,
+  rapid_fire: 0,
+  off_hours: 0
 };
 
 export const AI_BEHAVIOR_LABELS = {

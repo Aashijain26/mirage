@@ -21,7 +21,7 @@ export function IncidentPage() {
     }
 
     // Default to the highest score event or the latest event
-    const highRisk = events.find((e) => (e.score ?? 0) >= 60);
+    const highRisk = events.find((e) => (e.score ?? 0) >= 70);
     return highRisk || events[0];
   }, [events, eventId]);
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { Bot, ShieldAlert, Layers, Zap, Server, Tag } from "lucide-react";
+import { Bot, ShieldAlert, Layers, Zap, Server, Tag, Clock } from "lucide-react";
 import { getFlagReadableText } from "../utils/formatters.js";
 
 const FLAG_CONFIG = {
@@ -7,6 +7,16 @@ const FLAG_CONFIG = {
     label: "Scripted",
     icon: Bot,
     color: "text-amber-300 bg-amber-950/40 border-amber-800/40"
+  },
+  scripted_ua: {
+    label: "Scripted",
+    icon: Bot,
+    color: "text-amber-300 bg-amber-950/40 border-amber-800/40"
+  },
+  suspicious_request: {
+    label: "Suspicious Request",
+    icon: ShieldAlert,
+    color: "text-orange-300 bg-orange-950/40 border-orange-800/40"
   },
   tor: {
     label: "Tor Exit",
@@ -18,15 +28,40 @@ const FLAG_CONFIG = {
     icon: Layers,
     color: "text-purple-300 bg-purple-950/40 border-purple-800/40"
   },
+  multi_token_probe: {
+    label: "Multi-Token",
+    icon: Layers,
+    color: "text-purple-300 bg-purple-950/40 border-purple-800/40"
+  },
   burst: {
     label: "Burst",
     icon: Zap,
     color: "text-orange-300 bg-orange-950/40 border-orange-800/40"
   },
+  rapid_fire: {
+    label: "Rapid Fire",
+    icon: Zap,
+    color: "text-orange-300 bg-orange-950/40 border-orange-800/40"
+  },
+  off_hours: {
+    label: "Off Hours",
+    icon: Clock,
+    color: "text-slate-300 bg-slate-800/50 border-slate-700"
+  },
   "hosting-provider": {
     label: "Hosting/Cloud",
     icon: Server,
     color: "text-blue-300 bg-blue-950/40 border-blue-800/40"
+  },
+  hosting_ip: {
+    label: "Hosting/Cloud",
+    icon: Server,
+    color: "text-blue-300 bg-blue-950/40 border-blue-800/40"
+  },
+  proxy_ip: {
+    label: "Proxy/VPN",
+    icon: ShieldAlert,
+    color: "text-red-300 bg-red-950/40 border-red-800/40"
   }
 };
 

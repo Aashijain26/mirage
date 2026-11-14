@@ -54,15 +54,15 @@ export function ThreatMap({ events = [] }) {
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
-            <span className="text-[#8FA0BD]">High Risk (&ge;60)</span>
+            <span className="text-[#8FA0BD]">High Risk (&ge;70)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
-            <span className="text-[#8FA0BD]">Medium (30-59)</span>
+            <span className="text-[#8FA0BD]">Medium (50-69)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#22C55E]" />
-            <span className="text-[#8FA0BD]">Low (&lt;30)</span>
+            <span className="text-[#8FA0BD]">Low (&lt;50)</span>
           </div>
         </div>
       </div>
@@ -102,8 +102,8 @@ export function ThreatMap({ events = [] }) {
             // Scale radius based on hit count: min 5, max 16
             const radius = Math.min(16, Math.max(5, 4 + Math.sqrt(cluster.hits) * 3));
             let color = "#22C55E";
-            if (cluster.maxScore >= 60) color = "#EF4444";
-            else if (cluster.maxScore >= 30) color = "#F59E0B";
+            if (cluster.maxScore >= 70) color = "#EF4444";
+            else if (cluster.maxScore >= 50) color = "#F59E0B";
 
             return (
               <g
@@ -113,7 +113,7 @@ export function ThreatMap({ events = [] }) {
                 onMouseLeave={() => setHoveredPoint(null)}
               >
                 {/* Outer animated radar pulse ring for high risk */}
-                {cluster.maxScore >= 60 && (
+                {cluster.maxScore >= 70 && (
                   <circle
                     cx={cluster.x}
                     cy={cluster.y}
@@ -180,9 +180,9 @@ export function ThreatMap({ events = [] }) {
             <div className="flex items-center gap-2 mb-1.5 border-b border-[#1F2B47] pb-1">
               <ShieldAlert
                 className={`w-4 h-4 ${
-                  hoveredPoint.maxScore >= 60
+                  hoveredPoint.maxScore >= 70
                     ? "text-red-400"
-                    : hoveredPoint.maxScore >= 30
+                    : hoveredPoint.maxScore >= 50
                     ? "text-amber-400"
                     : "text-emerald-400"
                 }`}
@@ -199,9 +199,9 @@ export function ThreatMap({ events = [] }) {
                 <span className="text-[#8FA0BD]">Max Risk Score:</span>
                 <span
                   className={`font-mono font-bold ${
-                    hoveredPoint.maxScore >= 60
+                    hoveredPoint.maxScore >= 70
                       ? "text-red-400"
-                      : hoveredPoint.maxScore >= 30
+                      : hoveredPoint.maxScore >= 50
                       ? "text-amber-400"
                       : "text-emerald-400"
                   }`}

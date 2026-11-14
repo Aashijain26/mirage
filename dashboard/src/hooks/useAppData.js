@@ -82,7 +82,7 @@ export function AppDataProvider({ children }) {
     const activeHoneytokens = tokens.filter((t) => !t.revoked).length;
     const totalAttacks = liveEvents.events.length;
     const highSeverityIncidents = liveEvents.events.filter(
-      (e) => (e.score ?? 0) >= 60
+      (e) => (e.score ?? 0) >= 70
     ).length;
 
     const latestEvent = liveEvents.events[0];

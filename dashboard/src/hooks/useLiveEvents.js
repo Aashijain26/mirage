@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getEvents, openSocket, isMockMode } from "../api.js";
+import { getEvents, startLiveUpdates, isMockMode } from "../api.js";
 
 const MAX_EVENTS = 500;
 
@@ -18,8 +18,6 @@ export function useLiveEvents() {
   const eventQueueRef = useRef([]);
   const socketRef = useRef(null);
   const pollingRef = useRef(null);
-  const retryTimeoutRef = useRef(null);
-  const retryAttemptRef = useRef(0);
   const isUnmountedRef = useRef(false);
 
   // Helper to mark an event as recent so it triggers flash highlight
@@ -64,7 +62,7 @@ export function useLiveEvents() {
         eventQueueRef.current = [];
         queue.forEach((e) => markRecent(e.id));
         setEvents((prevEvents) => {
-          const combined = [...queue.reverse(), ...prevEvents];
+          const combined = [...queue, ...prevEvents];
           const seen = new Set();
           const deduped = [];
           for (const ev of combined) {
@@ -100,87 +98,51 @@ export function useLiveEvents() {
     }
   }, []);
 
-  // Connect socket and handle reconnect backoff
+  // Use the mock simulator locally and authenticated REST polling in real mode.
   const connect = useCallback(() => {
     if (isUnmountedRef.current) return;
 
     if (isMockMode) {
       setStatus("mock");
-      const sub = openSocket(handleIncomingEvent, (s) => {
+      const sub = startLiveUpdates(handleIncomingEvent, (s) => {
         if (!isUnmountedRef.current) setStatus(s);
       });
       socketRef.current = sub;
       return;
     }
 
-    // Real mode connection
-    if (socketRef.current) {
-      socketRef.current.close();
-      socketRef.current = null;
-    }
-
-    const sub = openSocket(
-      (newEvent) => {
-        handleIncomingEvent(newEvent);
-      },
-      (socketStatus) => {
-        if (isUnmountedRef.current) return;
-
-        if (socketStatus === "live") {
-          setStatus("live");
-          retryAttemptRef.current = 0;
-          // Stop polling fallback when socket is live
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
-        } else {
-          setStatus("reconnecting");
-          // Start polling fallback while socket is down
-          if (!pollingRef.current) {
-            pollingRef.current = setInterval(async () => {
-              try {
-                const polled = await getEvents();
-                if (!isUnmountedRef.current && Array.isArray(polled)) {
-                  setEvents((prev) => {
-                    const seen = new Set(prev.map((e) => e.id));
-                    const newItems = polled.filter((e) => !seen.has(e.id));
-                    if (newItems.length > 0) {
-                      newItems.forEach((e) => markRecent(e.id));
-                      return [...newItems, ...prev].slice(0, MAX_EVENTS);
-                    }
-                    return prev;
-                  });
-                }
-              } catch (_) {
-                if (!isUnmountedRef.current) {
-                  setStatus("offline");
-                }
+    setStatus("polling");
+    if (!pollingRef.current) {
+      pollingRef.current = setInterval(async () => {
+        try {
+          const polled = await getEvents();
+          if (!isUnmountedRef.current && Array.isArray(polled)) {
+            setStatus("polling");
+            setError(null);
+            setEvents((prev) => {
+              const seen = new Set([
+                ...prev.map((e) => e.id),
+                ...eventQueueRef.current.map((e) => e.id)
+              ]);
+              const newItems = polled.filter((e) => !seen.has(e.id));
+              if (newItems.length === 0) return prev;
+              if (isPausedRef.current) {
+                eventQueueRef.current.push(...newItems);
+                return prev;
               }
-            }, 2000);
+              newItems.forEach((event) => markRecent(event.id));
+              return [...newItems, ...prev].slice(0, MAX_EVENTS);
+            });
           }
-
-          // Exponential backoff: 1s, 2s, 4s, max 10s
-          const backoffDelay = Math.min(
-            10000,
-            1000 * Math.pow(2, retryAttemptRef.current)
-          );
-          retryAttemptRef.current++;
-
-          if (retryTimeoutRef.current) {
-            clearTimeout(retryTimeoutRef.current);
+        } catch (err) {
+          if (!isUnmountedRef.current) {
+            setStatus("offline");
+            setError(err.message || "Failed to poll events");
           }
-          retryTimeoutRef.current = setTimeout(() => {
-            if (!isUnmountedRef.current) {
-              connect();
-            }
-          }, backoffDelay);
         }
-      }
-    );
-
-    socketRef.current = sub;
-  }, [handleIncomingEvent, markRecent]);
+      }, 2500);
+    }
+  }, [handleIncomingEvent]);
 
   useEffect(() => {
     isUnmountedRef.current = false;
@@ -195,9 +157,6 @@ export function useLiveEvents() {
       }
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
-      }
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
       }
     };
   }, [loadInitialData, connect]);

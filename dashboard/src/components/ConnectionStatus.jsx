@@ -31,6 +31,18 @@ export function ConnectionStatus({ status = "live", className = "" }) {
     );
   }
 
+  if (norm === "polling") {
+    return (
+      <div
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-950/50 text-emerald-300 border border-emerald-800/60 ${className}`}
+        title="Authenticated REST polling is receiving event updates."
+      >
+        <Database className="w-3 h-3" />
+        <span className="font-semibold">Polling</span>
+      </div>
+    );
+  }
+
   if (norm === "reconnecting") {
     return (
       <div

@@ -33,9 +33,9 @@ export function Feed({
     if (severityFilter !== "all") {
       list = list.filter((e) => {
         const s = e.score ?? 0;
-        if (severityFilter === "high") return s >= 60;
-        if (severityFilter === "medium") return s >= 30 && s < 60;
-        if (severityFilter === "low") return s < 30;
+        if (severityFilter === "high") return s >= 70;
+        if (severityFilter === "medium") return s >= 50 && s < 70;
+        if (severityFilter === "low") return s < 50;
         return true;
       });
     }
@@ -167,7 +167,7 @@ export function Feed({
               <tbody className="divide-y divide-[#1F2B47]/60 text-xs">
                 {filteredEvents.map((ev) => {
                   const isRecent = recentEventIds.has(ev.id);
-                  const isHighRisk = (ev.score ?? 0) >= 60;
+                  const isHighRisk = (ev.score ?? 0) >= 70;
                   const resolvedToken = tokenMap.get(ev.token_id);
                   const tokenLabel = resolvedToken ? resolvedToken.label : ev.token_id || "Unknown";
                   const relTime = formatRelativeTime(ev.ts, now);
@@ -279,7 +279,7 @@ export function Feed({
           <div className="block md:hidden divide-y divide-[#1F2B47]/60">
             {filteredEvents.map((ev) => {
               const isRecent = recentEventIds.has(ev.id);
-              const isHighRisk = (ev.score ?? 0) >= 60;
+              const isHighRisk = (ev.score ?? 0) >= 70;
               const resolvedToken = tokenMap.get(ev.token_id);
               const tokenLabel = resolvedToken ? resolvedToken.label : ev.token_id || "Unknown";
               const relTime = formatRelativeTime(ev.ts, now);

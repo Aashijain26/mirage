@@ -244,9 +244,9 @@ export function Incident({ event, onSelectEventId = null }) {
             <div className="w-full bg-[#0B1220] h-2.5 rounded-full overflow-hidden border border-[#1F2B47]">
               <div
                 className={`h-full transition-all duration-500 ${
-                  event.score >= 60
+                  event.score >= 70
                     ? "bg-red-500"
-                    : event.score >= 30
+                    : event.score >= 50
                     ? "bg-amber-500"
                     : "bg-emerald-500"
                 }`}
@@ -307,7 +307,7 @@ export function Incident({ event, onSelectEventId = null }) {
                   className={`absolute -left-[27px] top-4 w-3.5 h-3.5 rounded-full border-2 transition-colors ${
                     isSelected
                       ? "bg-emerald-400 border-[#0B1220] ring-2 ring-emerald-500/50"
-                      : timelineEv.score >= 60
+                      : timelineEv.score >= 70
                       ? "bg-red-500 border-[#0B1220]"
                       : "bg-[#8FA0BD] border-[#0B1220]"
                   }`}
@@ -408,10 +408,10 @@ export function Incident({ event, onSelectEventId = null }) {
             <Sparkles className="w-5 h-5 text-emerald-400" aria-hidden="true" />
             <div>
               <h3 className="text-sm font-bold text-[#E6EDF7]">
-                AI SOC Attacker Profile &amp; Remediation
+                Attacker Profile &amp; Remediation
               </h3>
               <p className="text-xs text-[#8FA0BD]">
-                Heuristic &amp; LLM-based adversary behavioral synthesis
+                Event-based behavior summary and mitigation guidance
               </p>
             </div>
           </div>
@@ -423,7 +423,7 @@ export function Incident({ event, onSelectEventId = null }) {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm border border-emerald-500 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-400 shrink-0"
             >
               <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>{aiState.status === "success" ? "Re-Analyze" : "Analyze with AI"}</span>
+              <span>{aiState.status === "success" ? "Refresh Summary" : "Generate Summary"}</span>
             </button>
           )}
         </div>
@@ -433,20 +433,20 @@ export function Incident({ event, onSelectEventId = null }) {
           <div className="p-8 text-center rounded-lg bg-[#0B1220] border border-dashed border-[#1F2B47] text-[#8FA0BD] space-y-3">
             <Sparkles className="w-8 h-8 mx-auto text-[#8FA0BD]/50" aria-hidden="true" />
             <p className="text-xs max-w-sm mx-auto">
-              Click &quot;Analyze with AI&quot; to synthesize multi-event timeline patterns, assess intent, and generate mitigation guidance.
+              Generate a summary of the selected source IP&apos;s event timeline and suggested mitigation steps.
             </p>
             <button
               type="button"
               onClick={handleRunAiAnalysis}
               className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
             >
-              Analyze with AI
+              Generate Summary
             </button>
           </div>
         )}
 
         {aiState.status === "loading" && (
-          <AiAnalysisSkeleton text="Analyzing attacker behavior..." />
+          <AiAnalysisSkeleton text="Summarizing attacker activity..." />
         )}
 
         {aiState.status === "error" && (

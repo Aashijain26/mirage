@@ -19,7 +19,7 @@ export const MOCK_TOKENS = [
     type: "api_key",
     label: "stripe-api-key",
     value: {
-      STRIPE_API_KEY: "MOCK_STRIPE_KEY_PLACEHOLDER",
+      STRIPE_API_KEY: "sk_live_51M087c9f801a2b3c4d5e6f7a8b9c0d1e",
       API_BASE_URL: "https://mock.example.com/t/tok-api-4401"
     },
     callback_url: "https://mock.example.com/t/tok-api-4401",
@@ -31,7 +31,7 @@ export const MOCK_TOKENS = [
     type: "db",
     label: "orders-db",
     value: {
-      DATABASE_URL: "postgres://demo_user:demo_password@localhost:5432/demo_db"
+      DATABASE_URL: "postgres://readonly_analyst:P%40ssw0rd2024!@db.internal.corp:5432/orders_prod"
     },
     callback_url: "https://mock.example.com/t/tok-db-8823",
     created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
@@ -425,9 +425,7 @@ export async function mockSummary(eventIds) {
 
   const targetEvents = mockEventsStore.filter((e) => eventIds.includes(e.id));
   const maxScore = targetEvents.reduce((max, e) => Math.max(max, e.score || 0), 0);
-  const flags = new Set(targetEvents.flatMap((e) => e.flags || []));
-
-  if (maxScore >= 60 || flags.has("tor") || flags.has("burst")) {
+  if (maxScore >= 70) {
     return {
       summary:
         "High-risk adversary activity detected. The IP exhibited automated exploitation behaviors, querying decoy endpoints in rapid succession. Traced to known anonymization relays / Tor exit nodes. Cross-token probing demonstrates deliberate credential reconnaissance across your perimeter.",
@@ -440,7 +438,7 @@ export async function mockSummary(eventIds) {
         "Audit repository commit history and CI/CD secret stores for accidental leaks"
       ]
     };
-  } else if (maxScore >= 30 || flags.has("hosting-provider") || flags.has("scripted")) {
+  } else if (maxScore >= 50) {
     return {
       summary:
         "Moderate-severity reconnaissance originating from a commercial cloud hosting provider. Request utilized automated tooling (e.g. curl/custom HTTP agent) targeting sensitive paths. Pattern is consistent with opportunistic repository crawlers looking for leaked credentials.",

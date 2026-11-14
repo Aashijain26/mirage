@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { AppDataProvider } from "./hooks/useAppData.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
@@ -8,6 +8,8 @@ import { Overview } from "./pages/Overview.jsx";
 import { Feed } from "./pages/Feed.jsx";
 import { Tokens } from "./pages/Tokens.jsx";
 import { IncidentPage } from "./pages/IncidentPage.jsx";
+import { Login } from "./pages/Login.jsx";
+import { isAuthenticated } from "./utils/auth.js";
 
 function LayoutShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -61,9 +63,14 @@ function LayoutShell() {
 export function App() {
   return (
     <BrowserRouter>
-      <AppDataProvider>
-        <LayoutShell />
-      </AppDataProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={
+          isAuthenticated()
+            ? <AppDataProvider><LayoutShell /></AppDataProvider>
+            : <Navigate to="/login" replace />
+        } />
+      </Routes>
     </BrowserRouter>
   );
 }

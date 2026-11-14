@@ -2,10 +2,17 @@
 
 export const FLAG_DESCRIPTIONS = {
   "scripted": "Automated tooling detected in user agent",
+  "scripted_ua": "Automated tooling detected in user agent",
+  "suspicious_request": "Reconnaissance path, network origin, burst, or off-hours activity",
   "tor": "Connection from a Tor exit node",
   "multi-token": "Probed multiple honeytokens",
+  "multi_token_probe": "Probed multiple honeytokens within 10 minutes",
   "burst": "Rapid burst of requests",
-  "hosting-provider": "Origin is a hosting or datacenter network"
+  "rapid_fire": "5 or more requests within 60 seconds",
+  "off_hours": "Activity between 00:00 and 05:00 UTC",
+  "hosting-provider": "Origin is a hosting or datacenter network",
+  "hosting_ip": "Origin is a hosting or datacenter network",
+  "proxy_ip": "Origin is a known proxy or VPN"
 };
 
 export function getFlagReadableText(flag) {
@@ -15,8 +22,8 @@ export function getFlagReadableText(flag) {
 
 export function getSeverityFromScore(score) {
   const num = typeof score === "number" ? score : parseInt(score, 10) || 0;
-  if (num >= 60) return "high";
-  if (num >= 30) return "medium";
+  if (num >= 70) return "high";
+  if (num >= 50) return "medium";
   return "low";
 }
 

@@ -41,7 +41,7 @@ export function StatsCards({ stats, loading = false, now = Date.now() }) {
     {
       label: "High-Severity Incidents",
       value: stats.highSeverityIncidents,
-      subtext: "Score >= 60 (Tor, burst, scans)",
+      subtext: "Score >= 70 (high severity)",
       icon: AlertTriangle,
       iconColor: "text-red-400 bg-red-950/40 border-red-800/40",
       highlight: stats.highSeverityIncidents > 0
