@@ -22,7 +22,12 @@ from sqlalchemy import text
 from app import models
 from app.database import engine, get_db, init_db
 from app.detection import detect_honeytoken_usage, token_database_id
-from app.github_placement import github_automation_config, run_auto_plant_once
+from app.github_placement import (
+    github_automation_config,
+    github_leak_response_config,
+    poll_github_secret_alerts_once,
+    run_auto_plant_once,
+)
 from app.honeytoken_service import generate_honeytoken
 from app.routes.admin import require_admin, router as admin_router
 
@@ -42,17 +47,30 @@ async def _auto_plant_scheduler():
         await asyncio.sleep(interval)
 
 
+async def _github_secret_alert_scheduler():
+    while True:
+        config = github_leak_response_config()
+        if config["enabled"]:
+            result = await asyncio.to_thread(poll_github_secret_alerts_once)
+            if result.get("status") not in {"checked", "disabled"}:
+                logger.info("Mirage GitHub alert scan status: %s", result.get("status"))
+            await asyncio.sleep(config["poll_interval_seconds"])
+        else:
+            await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(_app):
-    task = asyncio.create_task(_auto_plant_scheduler())
+    tasks = [
+        asyncio.create_task(_auto_plant_scheduler()),
+        asyncio.create_task(_github_secret_alert_scheduler()),
+    ]
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 app = FastAPI(
     title="Mirage Honeytoken Monitor",

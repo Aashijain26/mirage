@@ -1,5 +1,5 @@
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, Text, UniqueConstraint
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -74,4 +74,23 @@ class PlantedDecoy(Base):
     host = Column(String(255), nullable=False)
     path = Column(String(500), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class GitHubSecretAlert(Base):
+    """One repository alert maps to at most one planted decoy."""
+    __tablename__ = "github_secret_alerts"
+    __table_args__ = (UniqueConstraint("repository", "alert_number", name="uq_github_secret_alert"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    repository = Column(String(255), nullable=False)
+    alert_number = Column(String(100), nullable=False)
+    secret_type = Column(String(120), nullable=False)
+    source_path = Column(String(500), nullable=True)
+    source_line = Column(Integer, nullable=True)
+    alert_url = Column(String(1000), nullable=True)
+    honeytoken_id = Column(Integer, ForeignKey("honeytokens.id"), nullable=False, unique=True)
+    decoy_path = Column(String(500), nullable=False)
+    status = Column(String(32), nullable=False, default="pending")
+    is_demo = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

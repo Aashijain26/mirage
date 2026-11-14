@@ -53,6 +53,7 @@ def send_alert(incident: Dict[str, Any]) -> bool:
         logger.warning("send_alert called with non-dict incident: %s", type(incident))
         return False
 
+
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -149,6 +150,66 @@ def send_alert(incident: Dict[str, Any]) -> bool:
         return False
     except Exception as exc:
         logger.error("Unexpected error in send_alert: %s", exc)
+        return False
+
+
+def send_leak_alert(alert: Dict[str, Any]) -> bool:
+    """Send a plain-text notice that a repository alert produced a decoy.
+
+    The exposed credential is intentionally never accepted by this function.
+    """
+    global _LAST_DISPATCH_TIME, _SUPPRESSED_ALERTS_COUNT
+    if not isinstance(alert, dict):
+        return False
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not bot_token or not chat_id or requests is None:
+        logger.warning("Telegram credentials missing or requests unavailable; skipping leak alert")
+        return False
+
+    now = time.time()
+    with _RATE_LOCK:
+        if now - _LAST_DISPATCH_TIME < MIN_RATE_LIMIT_INTERVAL:
+            _SUPPRESSED_ALERTS_COUNT += 1
+            logger.info("Telegram rate limit active; suppressing GitHub leak alert")
+            return False
+        _LAST_DISPATCH_TIME = now
+        _SUPPRESSED_ALERTS_COUNT = 0
+
+    from app.intel.sanitize import sanitize_untrusted_text
+
+    repository = sanitize_untrusted_text(alert.get("repository") or "unknown", max_length=120)
+    alert_number = sanitize_untrusted_text(alert.get("alert_number") or "unknown", max_length=80)
+    secret_type = sanitize_untrusted_text(alert.get("secret_type") or "unknown", max_length=100)
+    source_path = sanitize_untrusted_text(alert.get("source_path") or "unknown", max_length=180)
+    decoy_path = sanitize_untrusted_text(alert.get("decoy_path") or "unknown", max_length=180)
+    source_line = alert.get("source_line")
+    is_demo = bool(alert.get("is_demo"))
+    lines = [
+        "[MIRAGE SECURITY ALERT] GitHub secret alert handled",
+        "DEMO CASE (simulated)" if is_demo else "New repository secret-scanning alert",
+        f"Repository: {repository}",
+        f"Alert: #{alert_number}",
+        f"Detected type: {secret_type}",
+        f"Source: {source_path}" + (f":{source_line}" if source_line else ""),
+        f"Mirage decoy planted: {decoy_path}",
+    ]
+    alert_url = alert.get("alert_url")
+    if alert_url:
+        lines.append(f"GitHub alert: {sanitize_untrusted_text(alert_url, max_length=300)}")
+    payload = {"chat_id": chat_id, "text": "\n".join(lines)}
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json=payload,
+            timeout=DEFAULT_TIMEOUT,
+        )
+        if response.status_code == 200 and response.json().get("ok") is True:
+            return True
+        logger.warning("Telegram rejected GitHub leak alert (HTTP %s)", response.status_code)
+        return False
+    except Exception as exc:
+        logger.warning("Could not send GitHub leak alert: %s", exc)
         return False
 
 

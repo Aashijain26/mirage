@@ -25,7 +25,7 @@ def token_public_id(token):
     return f"tok-{token.token_type}-{token.id}"
 
 
-def generate_honeytoken(db, name, token_type, callback_base_url=None, context=None):
+def generate_honeytoken(db, name, token_type, callback_base_url=None, context=None, commit=True):
     token_type = (token_type or "api_key").lower()
     if token_type not in {"aws", "api_key", "db", "webhook"}:
         raise ValueError("Unsupported honeytoken type")
@@ -44,8 +44,9 @@ def generate_honeytoken(db, name, token_type, callback_base_url=None, context=No
         value = raw_token
 
     record.token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    db.commit()
-    db.refresh(record)
+    if commit:
+        db.commit()
+        db.refresh(record)
     base_url = (callback_base_url or os.getenv("PUBLIC_BASE_URL") or "http://localhost:8000").rstrip("/")
     callback_url = f"{base_url}/t/{public_id}/hook"
     if token_type == "aws":

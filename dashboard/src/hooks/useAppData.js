@@ -15,6 +15,10 @@ import {
   deleteToken as apiDeleteToken,
   getDecoys as apiGetDecoys,
   getAutomationStatus,
+  getLeakResponseStatus,
+  getLeakAlerts,
+  checkLeakAlertsNow as apiCheckLeakAlertsNow,
+  createLeakDemoCases as apiCreateLeakDemoCases,
   createDecoy as apiCreateDecoy,
   deleteDecoy as apiDeleteDecoy,
   summarize,
@@ -34,6 +38,9 @@ export function AppDataProvider({ children }) {
   const [tokensError, setTokensError] = useState(null);
   const [decoysError, setDecoysError] = useState(null);
   const [automationStatus, setAutomationStatus] = useState({ status: "loading" });
+  const [leakResponseStatus, setLeakResponseStatus] = useState({ status: "loading" });
+  const [leakAlerts, setLeakAlerts] = useState([]);
+  const [leakAlertsError, setLeakAlertsError] = useState(null);
   const [incidentsError, setIncidentsError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -89,21 +96,54 @@ export function AppDataProvider({ children }) {
     }
   }, []);
 
+  const refreshLeakAlerts = useCallback(async () => {
+    try {
+      setLeakAlerts(await getLeakAlerts());
+      setLeakAlertsError(null);
+    } catch (err) {
+      setLeakAlertsError(err.message || "Could not load GitHub alerts");
+    }
+  }, []);
+
+  const refreshLeakResponseStatus = useCallback(async () => {
+    try {
+      setLeakResponseStatus(await getLeakResponseStatus());
+    } catch (err) {
+      setLeakResponseStatus({ status: "unavailable", error: err.message || "Could not load leak response status" });
+    }
+  }, []);
+
   useEffect(() => {
     refreshTokens();
     refreshIncidents();
     refreshDecoys();
     refreshAutomationStatus();
-  }, [refreshTokens, refreshDecoys, refreshIncidents, refreshAutomationStatus]);
+    refreshLeakAlerts();
+    refreshLeakResponseStatus();
+  }, [refreshTokens, refreshDecoys, refreshIncidents, refreshAutomationStatus, refreshLeakAlerts, refreshLeakResponseStatus]);
 
   useEffect(() => {
     if (isMockMode) return undefined;
     const timer = setInterval(() => {
       refreshIncidents();
       refreshAutomationStatus();
+      refreshLeakAlerts();
+      refreshLeakResponseStatus();
     }, 30000);
     return () => clearInterval(timer);
-  }, [refreshIncidents, refreshAutomationStatus]);
+  }, [refreshIncidents, refreshAutomationStatus, refreshLeakAlerts, refreshLeakResponseStatus]);
+
+  const checkLeakAlertsNow = useCallback(async () => {
+    const result = await apiCheckLeakAlertsNow();
+    await Promise.all([refreshLeakAlerts(), refreshDecoys(), refreshLeakResponseStatus()]);
+    return result;
+  }, [refreshDecoys, refreshLeakAlerts, refreshLeakResponseStatus]);
+
+  const createLeakDemoCases = useCallback(async () => {
+    const result = await apiCreateLeakDemoCases();
+    await Promise.all([refreshLeakAlerts(), refreshDecoys(), refreshLeakResponseStatus()]);
+    return result;
+  }, [refreshDecoys, refreshLeakAlerts, refreshLeakResponseStatus]);
 
   const tokenMap = useMemo(() => {
     const map = new Map();
@@ -213,6 +253,12 @@ export function AppDataProvider({ children }) {
     decoys,
     decoysError,
     automationStatus,
+    leakResponseStatus,
+    leakAlerts,
+    leakAlertsError,
+    refreshLeakAlerts,
+    checkLeakAlertsNow,
+    createLeakDemoCases,
     loadingDecoys,
     refreshDecoys,
     createDecoy: handleCreateDecoy,

@@ -10,11 +10,19 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.github_placement import get_last_automation_result, github_automation_config, run_auto_plant_once
+from app.github_placement import (
+    create_demo_secret_alerts,
+    get_last_automation_result,
+    get_last_leak_scan_result,
+    github_automation_config,
+    github_leak_response_config,
+    poll_github_secret_alerts_once,
+    run_auto_plant_once,
+)
 from app.intel.summarizer import summarize_incident as run_summarize_incident
 from app.intel.decoys import generate_decoys as run_generate_decoys
 from app.honeytoken_service import generate_honeytoken, token_public_id
-from app.models import Event, Honeytoken, Incident, PlantedDecoy
+from app.models import Event, GitHubSecretAlert, Honeytoken, Incident, PlantedDecoy
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 bearer = HTTPBearer(auto_error=False)
@@ -343,6 +351,8 @@ def automation_status(
         "path": config["path"],
         "interval_hours": config["interval_hours"],
         "last_run": last_run.get("checked_at"),
+        "leak_response_enabled": github_leak_response_config()["enabled"],
+        "leak_demo_enabled": github_leak_response_config()["demo_enabled"],
     }
 
 
@@ -353,3 +363,78 @@ def run_automation_now(
 ):
     """Run a single placement attempt for setup and diagnostics."""
     return run_auto_plant_once(db)
+
+
+@router.get("/leak-response/status")
+def leak_response_status(_: bool = Depends(require_admin)):
+    config = github_leak_response_config()
+    last_scan = get_last_leak_scan_result()
+    if not config["enabled"]:
+        status_text = "disabled"
+    elif not config["configured"]:
+        status_text = "needs_configuration"
+    else:
+        status_text = last_scan.get("status", "waiting")
+    return {
+        "enabled": config["enabled"],
+        "configured": config["configured"],
+        "demo_enabled": config["demo_enabled"],
+        "repository": config["repository"],
+        "poll_interval_seconds": config["poll_interval_seconds"],
+        "status": status_text,
+        "last_scan": last_scan.get("checked_at"),
+        "last_result": last_scan.get("status", "not_run"),
+    }
+
+
+@router.get("/leak-alerts")
+def get_leak_alerts(
+    _: bool = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    rows = db.query(GitHubSecretAlert).order_by(GitHubSecretAlert.created_at.desc()).limit(200).all()
+    base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    results = []
+    for row in rows:
+        decoy = db.query(PlantedDecoy).filter_by(honeytoken_id=row.honeytoken_id).first()
+        token = db.query(Honeytoken).filter_by(id=row.honeytoken_id).first()
+        hits = db.query(Event).filter_by(honeytoken_id=row.honeytoken_id).count()
+        callback_url = f"{base_url}/t/{token_public_id(token)}/hook" if token else None
+        results.append({
+            "id": row.id,
+            "repository": row.repository,
+            "alert_number": row.alert_number,
+            "secret_type": row.secret_type,
+            "source_path": row.source_path,
+            "source_line": row.source_line,
+            "alert_url": row.alert_url,
+            "status": row.status,
+            "is_demo": row.is_demo,
+            "decoy_id": decoy.id if decoy else None,
+            "decoy_type": decoy.decoy_type if decoy else None,
+            "decoy_path": row.decoy_path,
+            "hits": hits,
+            "callback_url": callback_url,
+            "created_at": _dt(row.created_at),
+        })
+    return results
+
+
+@router.post("/leak-response/check-now")
+def check_github_alerts_now(_: bool = Depends(require_admin)):
+    """Trigger an immediate scan of the configured repository."""
+    return poll_github_secret_alerts_once()
+
+
+@router.post("/leak-response/demo")
+def create_leak_demo_cases(
+    _: bool = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Plant three safe synthetic cases; only enabled by LEAK_DEMO_ENABLED."""
+    result = create_demo_secret_alerts(db)
+    if result.get("status") == "demo_disabled":
+        raise HTTPException(status_code=403, detail="Safe leak demo cases are disabled")
+    if result.get("status") == "needs_configuration":
+        raise HTTPException(status_code=503, detail="Configure the GitHub repository and token first")
+    return result

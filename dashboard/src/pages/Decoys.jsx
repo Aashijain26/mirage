@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Key, FileCode, Database, Archive, Trash2 } from "lucide-react";
+import { Key, FileCode, Database, Archive, Trash2, RefreshCw, FlaskConical } from "lucide-react";
 import { SpotlightCard } from "../components/SpotlightCard.jsx";
 import { CopyButton } from "../components/CopyButton.jsx";
 import { useAppData } from "../hooks/useAppData.js";
@@ -36,7 +36,11 @@ const DECOY_TYPES = [
 ];
 
 export function Decoys() {
-  const { decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys, decoysError, automationStatus, isMockMode } = useAppData();
+  const {
+    decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys, decoysError,
+    automationStatus, leakResponseStatus, leakAlerts, leakAlertsError,
+    checkLeakAlertsNow, createLeakDemoCases, refreshLeakAlerts, isMockMode
+  } = useAppData();
   const [selectedType, setSelectedType] = useState("ssh");
   const [label, setLabel] = useState("");
   const [host, setHost] = useState("");
@@ -44,6 +48,25 @@ export function Decoys() {
   const [submitting, setSubmitting] = useState(false);
   const [createdDecoy, setCreatedDecoy] = useState(null);
   const [error, setError] = useState("");
+  const [automationAction, setAutomationAction] = useState("");
+  const [automationBusy, setAutomationBusy] = useState(false);
+
+  const runLeakAction = async (action) => {
+    setAutomationBusy(true);
+    setAutomationAction("");
+    try {
+      const result = await action();
+      const statuses = (result?.results || []).map((item) => item.status);
+      setAutomationAction(statuses.length
+        ? `Finished: ${statuses.join(", ")}`
+        : `Finished: ${result?.status || "checked"}`);
+      await refreshLeakAlerts();
+    } catch (err) {
+      setAutomationAction(err.message || "The GitHub action failed. Check backend logs.");
+    } finally {
+      setAutomationBusy(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -206,6 +229,61 @@ export function Decoys() {
             {automationStatus.repository && <span> · {automationStatus.repository}:{automationStatus.path}</span>}
             {automationStatus.status === "needs_configuration" && <span> · Add the GitHub settings to the backend environment and enable AUTO_PLANT_ENABLED.</span>}
             {automationStatus.status === "needs_public_https_url" && <span> · Set PUBLIC_BASE_URL to the deployed HTTPS backend URL.</span>}
+          </div>
+
+          <div className="rounded-lg border border-[#202e47] bg-[#0d1422] p-3 space-y-2 text-[11px] font-mono-tech text-[#8FA0BD]">
+            <div>
+              <span className="text-white">Leak-triggered planting: </span>
+              <span className={leakResponseStatus.enabled && leakResponseStatus.configured ? "text-emerald-400" : "text-amber-300"}>
+                {leakResponseStatus.status?.replaceAll("_", " ") || "checking"}
+              </span>
+              {leakResponseStatus.repository && <span> · {leakResponseStatus.repository}</span>}
+            </div>
+            <p>Same GitHub alert reuses its decoy. Each callback use adds a hit to that decoy.</p>
+            {automationAction && <p className="text-cyan-300 break-words">{automationAction}</p>}
+            <div className="flex flex-wrap gap-2">
+              {leakResponseStatus.enabled && (
+                <button type="button" disabled={automationBusy || isMockMode}
+                  onClick={() => runLeakAction(checkLeakAlertsNow)}
+                  className="inline-flex items-center gap-1.5 rounded border border-[#334155] px-2.5 py-1.5 text-[10px] text-white hover:bg-white/5 disabled:opacity-50">
+                  <RefreshCw className="h-3 w-3" /> Check GitHub now
+                </button>
+              )}
+              {leakResponseStatus.demo_enabled && (
+                <button type="button" disabled={automationBusy || isMockMode}
+                  onClick={() => runLeakAction(createLeakDemoCases)}
+                  className="inline-flex items-center gap-1.5 rounded border border-emerald-700 px-2.5 py-1.5 text-[10px] text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-50">
+                  <FlaskConical className="h-3 w-3" /> Create 3 safe demo cases
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-[#202e47] bg-[#0d1422] p-3 space-y-2">
+            <div className="text-[11px] font-mono-tech text-white">GitHub leak log</div>
+            {leakAlertsError && <p className="text-[10px] text-rose-400">{leakAlertsError}</p>}
+            {leakAlerts.length === 0 && !leakAlertsError && (
+              <p className="text-[10px] font-mono-tech text-[#64748b]">No GitHub alerts have been processed yet.</p>
+            )}
+            {leakAlerts.slice(0, 10).map((alert) => (
+              <div key={alert.id} className="border-t border-[#202e47] pt-2 text-[10px] font-mono-tech text-[#8FA0BD] space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-white">{alert.secret_type}</span>
+                  {alert.is_demo && <span className="rounded bg-amber-950 px-1.5 py-0.5 text-amber-300">SIMULATED</span>}
+                  <span>· {alert.status}</span>
+                  <span>· {alert.hits} hits</span>
+                </div>
+                <div className="break-all">Source: {alert.repository}:{alert.source_path || "unknown"}{alert.source_line ? `:${alert.source_line}` : ""}</div>
+                <div className="break-all">Decoy: {alert.decoy_path}</div>
+                {alert.callback_url && (
+                  <div className="flex flex-wrap items-center gap-2 break-all">
+                    <span>Callback: {alert.callback_url}</span>
+                    <CopyButton compact label="Copy callback" textToCopy={alert.callback_url} />
+                  </div>
+                )}
+                {alert.alert_url && <a className="text-cyan-300 underline" href={alert.alert_url} target="_blank" rel="noreferrer">Open GitHub alert</a>}
+              </div>
+            ))}
           </div>
 
           {/* Decoy List Items */}

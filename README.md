@@ -117,7 +117,7 @@ All `/admin/*` routes require `Authorization: Bearer <ADMIN_TOKEN>`.
 
 The backend can automatically create one fake webhook credential and commit it to a dedicated `.env` file in the configured GitHub repository when the service starts. It will not overwrite an existing file, and a database record prevents duplicate planting on restarts. The default target is `Aashijain26/mirage` at `mirage-decoys/.env`; change these settings if you want another repository or path.
 
-Create a GitHub fine-grained personal access token restricted to the target repository, with **Contents: Read and write** permission. Add these backend environment variables in Render:
+Create a GitHub fine-grained personal access token restricted to the target repository, with **Contents: Read and write** permission. To enable automatic response to secret-scanning alerts, also grant **Secret scanning alerts: Read**. Add these backend environment variables in Render:
 
 | Name | Value |
 | --- | --- |
@@ -131,3 +131,13 @@ Create a GitHub fine-grained personal access token restricted to the target repo
 After the backend restarts, check **Decoys → GitHub auto-planting** in the dashboard. You can also call `GET /admin/automation/status` while signed in. A repository file must be visible to the people you want to discover it; a private repository is not bait for outside attackers.
 
 The generated credential is cryptographically random; an LLM should not invent credentials. The planted file includes a Mirage callback URL. Mirage can alert when a request reaches that URL. Merely copying or using an ordinary API-key string against some unrelated vendor does not send Mirage a request, so that alone cannot trigger a Mirage alert.
+
+## Respond to GitHub secret-scanning alerts
+
+Mirage can also poll secret-scanning alerts for the single repository in `GITHUB_REPOSITORY`. When a new alert is first seen, it records the GitHub alert number and source metadata, generates a decoy, and writes it to a unique `mirage-decoys/leak-alerts/` path. It never requests or stores the exposed credential value. The repository and alert number are unique together, so seeing the same alert during later polls does not create another decoy. A genuinely different alert gets its own decoy, including when it has the same secret type.
+
+Each decoy's callback remains tied to its original honeytoken. Repeated requests to that callback create separate event rows and increase that decoy's displayed hit count; they do not create additional decoy entries. The Decoys page's GitHub leak log shows the secret type, repository, source file and line, decoy path, and hit count.
+
+To enable this feature on Render, set `GITHUB_LEAK_RESPONSE_ENABLED=true`, `GITHUB_REPOSITORY=owner/name`, and `GITHUB_TOKEN` on the backend. The fine-grained token must be restricted to the selected repository and have **Secret scanning alerts: Read** and **Contents: Read and write** permissions. `GITHUB_ALERT_POLL_INTERVAL_SECONDS` controls polling (30–3600 seconds; default 60). GitHub reports supported secret patterns only; this is not an internet-wide scanner.
+
+For a safe presentation, set `LEAK_DEMO_ENABLED=true` temporarily. The Decoys page then offers **Create 3 safe demo cases**, which creates stable synthetic AWS, GitHub, and generic examples in the repository. Repeating the demo button reuses those same three alert IDs instead of planting duplicates. Turn the setting off after the demo. Never commit a working credential for testing; revoke/rotate any real credential GitHub reports.
