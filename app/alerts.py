@@ -154,12 +154,17 @@ def send_alert(incident: Dict[str, Any]) -> bool:
 
 
 def send_leak_alert(alert: Dict[str, Any]) -> bool:
-    """Send a plain-text notice that a repository alert produced a decoy.
+    """Send a plain-text notice that a repository alert produced a decoy."""
+    return send_leak_alerts([alert])
 
-    The exposed credential is intentionally never accepted by this function.
-    """
+
+def send_leak_alerts(alerts: List[Dict[str, Any]]) -> bool:
+    """Send one rate-limited Telegram message for one or more leak alerts."""
     global _LAST_DISPATCH_TIME, _SUPPRESSED_ALERTS_COUNT
-    if not isinstance(alert, dict):
+    if not isinstance(alerts, list):
+        return False
+    alerts = [alert for alert in alerts if isinstance(alert, dict)]
+    if not alerts:
         return False
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -178,25 +183,29 @@ def send_leak_alert(alert: Dict[str, Any]) -> bool:
 
     from app.intel.sanitize import sanitize_untrusted_text
 
-    repository = sanitize_untrusted_text(alert.get("repository") or "unknown", max_length=120)
-    alert_number = sanitize_untrusted_text(alert.get("alert_number") or "unknown", max_length=80)
-    secret_type = sanitize_untrusted_text(alert.get("secret_type") or "unknown", max_length=100)
-    source_path = sanitize_untrusted_text(alert.get("source_path") or "unknown", max_length=180)
-    decoy_path = sanitize_untrusted_text(alert.get("decoy_path") or "unknown", max_length=180)
-    source_line = alert.get("source_line")
-    is_demo = bool(alert.get("is_demo"))
     lines = [
         "[MIRAGE SECURITY ALERT] GitHub secret alert handled",
-        "DEMO CASE (simulated)" if is_demo else "New repository secret-scanning alert",
-        f"Repository: {repository}",
-        f"Alert: #{alert_number}",
-        f"Detected type: {secret_type}",
-        f"Source: {source_path}" + (f":{source_line}" if source_line else ""),
-        f"Mirage decoy planted: {decoy_path}",
+        f"{len(alerts)} decoy case(s) planted:",
     ]
-    alert_url = alert.get("alert_url")
-    if alert_url:
-        lines.append(f"GitHub alert: {sanitize_untrusted_text(alert_url, max_length=300)}")
+    for alert in alerts[:20]:
+        repository = sanitize_untrusted_text(alert.get("repository") or "unknown", max_length=120)
+        alert_number = sanitize_untrusted_text(alert.get("alert_number") or "unknown", max_length=80)
+        secret_type = sanitize_untrusted_text(alert.get("secret_type") or "unknown", max_length=100)
+        source_path = sanitize_untrusted_text(alert.get("source_path") or "unknown", max_length=180)
+        decoy_path = sanitize_untrusted_text(alert.get("decoy_path") or "unknown", max_length=180)
+        source_line = alert.get("source_line")
+        demo_mark = " [SIMULATED]" if alert.get("is_demo") else ""
+        lines.extend([
+            "",
+            f"{repository} · alert #{alert_number}{demo_mark}",
+            f"Type: {secret_type} · Source: {source_path}" + (f":{source_line}" if source_line else ""),
+            f"Decoy: {decoy_path}",
+        ])
+        alert_url = alert.get("alert_url")
+        if alert_url:
+            lines.append(f"GitHub alert: {sanitize_untrusted_text(alert_url, max_length=300)}")
+    if len(alerts) > 20:
+        lines.append(f"\n+{len(alerts) - 20} additional cases are listed in the Mirage dashboard.")
     payload = {"chat_id": chat_id, "text": "\n".join(lines)}
     try:
         response = requests.post(

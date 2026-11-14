@@ -217,7 +217,7 @@ def _alert_decoy_type(secret_type):
     return "generic", "api_key"
 
 
-def _write_alert_decoy(session: Session, config, alert, source_path=None, source_line=None, is_demo=False):
+def _write_alert_decoy(session: Session, config, alert, source_path=None, source_line=None, is_demo=False, notify=True):
     """Create exactly one decoy for a source alert, then plant it in GitHub."""
     repository = config["repository"]
     alert_number = str(alert.get("number") or "").strip()
@@ -337,10 +337,10 @@ def _write_alert_decoy(session: Session, config, alert, source_path=None, source
             token.is_active = False
     session.commit()
 
-    if alert_row.status == "planted":
+    if alert_row.status == "planted" and notify:
         try:
-            from app.alerts import send_leak_alert
-            send_leak_alert({
+            from app.alerts import send_leak_alerts
+            send_leak_alerts([{
                 "repository": repository,
                 "alert_number": alert_number,
                 "secret_type": secret_type,
@@ -349,7 +349,7 @@ def _write_alert_decoy(session: Session, config, alert, source_path=None, source
                 "alert_url": alert_row.alert_url,
                 "decoy_path": decoy_path,
                 "is_demo": is_demo,
-            })
+            }])
         except Exception:
             logger.exception("Failed to send GitHub leak alert notification")
     return {"status": alert_row.status, "alert_number": alert_number,
@@ -402,10 +402,14 @@ def _poll_secret_alerts(db):
             continue
         try:
             source_path, source_line = _location_for_alert(config, alert["number"])
-            results.append(_write_alert_decoy(db, config, alert, source_path, source_line))
+            results.append(_write_alert_decoy(db, config, alert, source_path, source_line, notify=False))
         except requests.RequestException:
             logger.exception("GitHub alert details request failed for alert %s", alert.get("number"))
             results.append({"status": "github_unavailable", "alert_number": str(alert["number"])})
+    planted = [item for item in results if item.get("status") == "planted"]
+    if planted:
+        from app.alerts import send_leak_alerts
+        send_leak_alerts(planted)
     return {"status": "checked", "repository": config["repository"],
             "processed": len(results), "results": results}
 
@@ -455,5 +459,10 @@ def create_demo_secret_alerts(db: Session):
             source_path=f"demo-cases/{_alert_type_slug(alert['secret_type'])}.env",
             source_line=1,
             is_demo=True,
+            notify=False,
         ))
+    planted = [item for item in results if item.get("status") == "planted"]
+    if planted:
+        from app.alerts import send_leak_alerts
+        send_leak_alerts(planted)
     return {"status": "completed", "results": results}
