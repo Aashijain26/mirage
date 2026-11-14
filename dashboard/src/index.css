@@ -1,17 +1,18 @@
 @import "tailwindcss";
 
 @theme {
-  --color-navy-bg: #0B1220;
-  --color-navy-surface: #111A2E;
-  --color-navy-elevated: #16213A;
-  --color-navy-border: #1F2B47;
-  --color-navy-text: #E6EDF7;
-  --color-navy-muted: #8FA0BD;
+  --color-mirage-bg: #0b0f17;
+  --color-mirage-card: #111726;
+  --color-mirage-card-subtle: #161f33;
+  --color-mirage-border: #1e2a40;
+  --color-mirage-border-subtle: #172236;
+  --color-mirage-text: #E6EDF7;
+  --color-mirage-muted: #8FA0BD;
 
+  --color-neon-green: #22C55E;
   --color-threat-high: #EF4444;
   --color-threat-medium: #F59E0B;
-  --color-threat-low: #22C55E;
-  --color-accent-green: #22C55E;
+  --color-threat-low: #3B82F6;
 }
 
 :root {
@@ -20,56 +21,95 @@
 
 body {
   margin: 0;
-  background-color: #0B1220;
+  background-color: #0b0f17;
   color: #E6EDF7;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-code, kbd, samp, pre, .font-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+.font-heading {
+  font-family: 'Chakra Petch', 'Rajdhani', sans-serif;
+  letter-spacing: 0.04em;
 }
 
-@keyframes flash-red {
-  0% {
-    background-color: rgba(239, 68, 68, 0.35);
-  }
-  100% {
-    background-color: transparent;
-  }
+.font-mono-tech {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-@keyframes flash-green {
-  0% {
-    background-color: rgba(34, 197, 94, 0.25);
-  }
-  100% {
-    background-color: transparent;
-  }
+/* Atmospheric Top Glow */
+.top-glow-gradient {
+  background: radial-gradient(ellipse 90% 240px at 50% -40px, rgba(163, 180, 50, 0.28), rgba(90, 110, 25, 0.12) 55%, transparent 80%);
 }
 
-.flash-new-high {
-  animation: flash-red 1.5s ease-out forwards;
+/* 3D Spheres for Overview */
+.sphere-3d-high {
+  background: radial-gradient(circle at 35% 32%, #ff8c6d 0%, #e64a19 45%, #8c1e05 100%);
+  box-shadow: 0 12px 28px -6px rgba(230, 74, 25, 0.45), inset 0 -6px 12px rgba(0, 0, 0, 0.65), inset 0 3px 6px rgba(255, 255, 255, 0.4);
 }
 
-.flash-new-normal {
-  animation: flash-green 1.5s ease-out forwards;
+.sphere-3d-medium {
+  background: radial-gradient(circle at 35% 32%, #fdd677 0%, #f57c00 45%, #944200 100%);
+  box-shadow: 0 12px 28px -6px rgba(245, 124, 0, 0.45), inset 0 -6px 12px rgba(0, 0, 0, 0.65), inset 0 3px 6px rgba(255, 255, 255, 0.4);
 }
 
-/* Custom scrollbars for dark SOC aesthetic */
+/* Deep Azure Blue Sphere */
+.sphere-3d-low {
+  background: radial-gradient(circle at 35% 32%, #93c5fd 0%, #2563eb 45%, #1e3a8a 100%);
+  box-shadow: 0 12px 28px -6px rgba(37, 99, 235, 0.5), inset 0 -6px 12px rgba(0, 0, 0, 0.65), inset 0 3px 6px rgba(255, 255, 255, 0.5);
+}
+
+/* Chamfered Cut-Corner Cards */
+.clip-chamfer-tr {
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
+}
+
+.clip-chamfer-button {
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+}
+
+/* Hazard / Diagonal Stripes with navy-blue base */
+.bg-hazard-stripes-dark {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(37, 51, 79, 0.7),
+    rgba(37, 51, 79, 0.7) 4px,
+    rgba(15, 23, 42, 0.7) 4px,
+    rgba(15, 23, 42, 0.7) 8px
+  );
+}
+
+/* White Translucent Hover Circle Utility */
+.hover-white-circle {
+  transition: all 0.25s ease;
+}
+.hover-white-circle:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+/* Blue Ambient Glow Utility */
+.blue-card-glow {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.blue-card-glow:hover {
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 0 28px -4px rgba(37, 99, 235, 0.16);
+}
+
+/* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0B1220;
+  background: #0b0f17;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1F2B47;
+  background: #1e2a40;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a3a5e;
+  background: #2b3d5c;
 }

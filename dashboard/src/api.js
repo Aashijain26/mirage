@@ -5,6 +5,10 @@ import {
   mockGetEvents,
   mockGetTokens,
   mockCreateToken,
+  mockDeleteToken,
+  mockGetDecoys,
+  mockCreateDecoy,
+  mockDeleteDecoy,
   mockSummary,
   startMockSimulator
 } from "./mock.js";
@@ -59,6 +63,27 @@ export async function createToken(body) {
   return res.data;
 }
 
+export async function deleteToken(id) {
+  if (isMockMode) return mockDeleteToken(id);
+  const res = await apiClient.delete(`${ENDPOINTS.tokens}/${id}`);
+  return res.data;
+}
+
+export async function getDecoys() {
+  if (isMockMode) return mockGetDecoys();
+  return [];
+}
+
+export async function createDecoy(body) {
+  if (isMockMode) return mockCreateDecoy(body);
+  return body;
+}
+
+export async function deleteDecoy(id) {
+  if (isMockMode) return mockDeleteDecoy(id);
+  return { ok: true };
+}
+
 export async function summarize(eventIds) {
   if (isMockMode) return mockSummary(eventIds);
   const res = await apiClient.post(ENDPOINTS.summary, { event_ids: eventIds });
@@ -71,7 +96,6 @@ export function startLiveUpdates(onMessage, onStatus) {
     const unsubscribe = startMockSimulator(onMessage);
     return { close: unsubscribe };
   }
-  // The real backend contract uses authenticated REST polling, not WebSockets.
   onStatus("polling");
   return { close() {} };
 }

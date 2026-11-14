@@ -1,7 +1,12 @@
-// Authentication utilities for Honeytoken Monitor SOC Admin
-// Tokens are strictly stored in sessionStorage, never in localStorage or logs.
+// Authentication utilities for Mirage Honeytoken SOC Admin
+// In real API mode, tokens are stored in sessionStorage.
+// In mock mode (VITE_USE_MOCK=true), access is granted immediately.
 
-const AUTH_TOKEN_KEY = "ht_admin_token";
+const AUTH_TOKEN_KEY = "mirage_admin_token";
+
+const RAW_API_URL = import.meta.env.VITE_API_URL || "";
+const RAW_USE_MOCK = import.meta.env.VITE_USE_MOCK;
+export const isMockMode = RAW_USE_MOCK === "true" || !RAW_API_URL.trim();
 
 export function getAuthToken() {
   try {
@@ -26,6 +31,6 @@ export function clearAuthToken() {
 }
 
 export function isAuthenticated() {
+  if (isMockMode) return true;
   return Boolean(getAuthToken());
 }
-

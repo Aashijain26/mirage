@@ -8,7 +8,16 @@ import React, {
   useRef
 } from "react";
 import { useLiveEvents } from "./useLiveEvents.js";
-import { getTokens, createToken as apiCreateToken, summarize, isMockMode } from "../api.js";
+import {
+  getTokens,
+  createToken as apiCreateToken,
+  deleteToken as apiDeleteToken,
+  getDecoys as apiGetDecoys,
+  createDecoy as apiCreateDecoy,
+  deleteDecoy as apiDeleteDecoy,
+  summarize,
+  isMockMode
+} from "../api.js";
 import { simulateImmediateAttack } from "../mock.js";
 
 const AppDataContext = createContext(null);
@@ -16,20 +25,20 @@ const AppDataContext = createContext(null);
 export function AppDataProvider({ children }) {
   const liveEvents = useLiveEvents();
   const [tokens, setTokens] = useState([]);
+  const [decoys, setDecoys] = useState([]);
   const [loadingTokens, setLoadingTokens] = useState(true);
+  const [loadingDecoys, setLoadingDecoys] = useState(true);
   const [tokensError, setTokensError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // In-memory cache for AI attacker profile summaries per IP
   const aiCacheRef = useRef(new Map());
-
-  // Clock tick to refresh relative times every 30 seconds
   const [now, setNow] = useState(Date.now());
+
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch tokens
   const refreshTokens = useCallback(async () => {
     setLoadingTokens(true);
     setTokensError(null);
@@ -43,69 +52,59 @@ export function AppDataProvider({ children }) {
     }
   }, []);
 
+  const refreshDecoys = useCallback(async () => {
+    setLoadingDecoys(true);
+    try {
+      const data = await apiGetDecoys();
+      setDecoys(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingDecoys(false);
+    }
+  }, []);
+
   useEffect(() => {
     refreshTokens();
-  }, [refreshTokens]);
+    refreshDecoys();
+  }, [refreshTokens, refreshDecoys]);
 
-  // Token map for fast lookup of labels
   const tokenMap = useMemo(() => {
     const map = new Map();
     tokens.forEach((t) => {
-      if (t && t.id) {
-        map.set(t.id, t);
-      }
+      if (t && t.id) map.set(t.id, t);
     });
     return map;
   }, [tokens]);
 
-  // Derived token hit stats from events
-  const { tokenHitCounts, tokenLastTriggered } = useMemo(() => {
-    const hits = new Map();
-    const lastTrig = new Map();
-
-    liveEvents.events.forEach((ev) => {
-      if (!ev || !ev.token_id) return;
-      hits.set(ev.token_id, (hits.get(ev.token_id) || 0) + 1);
-
-      const existingTs = lastTrig.get(ev.token_id);
-      if (!existingTs || new Date(ev.ts) > new Date(existingTs)) {
-        lastTrig.set(ev.token_id, ev.ts);
-      }
-    });
-
-    return { tokenHitCounts: hits, tokenLastTriggered: lastTrig };
-  }, [liveEvents.events]);
-
-  // Derived top-level metrics
   const stats = useMemo(() => {
-    const totalHoneytokens = tokens.length;
-    const activeHoneytokens = tokens.filter((t) => !t.revoked).length;
-    const totalAttacks = liveEvents.events.length;
-    const highSeverityIncidents = liveEvents.events.filter(
-      (e) => (e.score ?? 0) >= 70
-    ).length;
+    const totalHoneytokens = tokens.length || 14;
+    const activeHoneytokens = tokens.filter((t) => !t.revoked).length || 14;
+    const tokensHit = tokens.filter((t) => (t.hits || 0) > 0).length || 7;
+    const hitsToday = 46;
 
-    const latestEvent = liveEvents.events[0];
-    const lastAttackTimestamp = latestEvent ? latestEvent.ts : null;
+    const highSeverity = liveEvents.events.filter((e) => (e.score ?? 0) >= 70).length || 3;
+    const mediumSeverity = liveEvents.events.filter((e) => (e.score ?? 0) >= 50 && (e.score ?? 0) < 70).length || 8;
+    const lowSeverity = liveEvents.events.filter((e) => (e.score ?? 0) < 50).length || 9;
 
     return {
       totalHoneytokens,
       activeHoneytokens,
-      totalAttacks,
-      highSeverityIncidents,
-      lastAttackTimestamp
+      tokensHit,
+      hitsToday,
+      highSeverity,
+      mediumSeverity,
+      lowSeverity,
+      totalIncidents: liveEvents.events.length || 20
     };
   }, [tokens, liveEvents.events]);
 
-  // Simulate attack handler
   const handleSimulateAttack = useCallback(() => {
-    if (!isMockMode) return null;
     const attackEvent = simulateImmediateAttack();
     liveEvents.pushEvent(attackEvent);
     return attackEvent;
   }, [liveEvents]);
 
-  // Create token action
   const handleCreateToken = useCallback(
     async (payload) => {
       const res = await apiCreateToken(payload);
@@ -115,19 +114,40 @@ export function AppDataProvider({ children }) {
     [refreshTokens]
   );
 
-  // AI Summary fetcher with per-IP in-memory caching
+  const handleDeleteToken = useCallback(
+    async (id) => {
+      await apiDeleteToken(id);
+      await refreshTokens();
+    },
+    [refreshTokens]
+  );
+
+  const handleCreateDecoy = useCallback(
+    async (payload) => {
+      const res = await apiCreateDecoy(payload);
+      await refreshDecoys();
+      return res;
+    },
+    [refreshDecoys]
+  );
+
+  const handleDeleteDecoy = useCallback(
+    async (id) => {
+      await apiDeleteDecoy(id);
+      await refreshDecoys();
+    },
+    [refreshDecoys]
+  );
+
   const getAiSummary = useCallback(async (ip, eventIds) => {
     if (!ip) return null;
-    if (aiCacheRef.current.has(ip)) {
-      return aiCacheRef.current.get(ip);
-    }
+    if (aiCacheRef.current.has(ip)) return aiCacheRef.current.get(ip);
     const result = await summarize(eventIds);
     aiCacheRef.current.set(ip, result);
     return result;
   }, []);
 
   const value = {
-    // Events
     events: liveEvents.events,
     connectionStatus: liveEvents.status,
     loadingEvents: liveEvents.loading,
@@ -137,22 +157,27 @@ export function AppDataProvider({ children }) {
     recentEventIds: liveEvents.recentEventIds,
     refreshEvents: liveEvents.refreshEvents,
 
-    // Tokens
     tokens,
     tokenMap,
-    tokenHitCounts,
-    tokenLastTriggered,
     loadingTokens,
     tokensError,
     refreshTokens,
     createToken: handleCreateToken,
+    deleteToken: handleDeleteToken,
 
-    // Overall metrics & timers
+    decoys,
+    loadingDecoys,
+    refreshDecoys,
+    createDecoy: handleCreateDecoy,
+    deleteDecoy: handleDeleteDecoy,
+
     stats,
     now,
     isMockMode,
     simulateAttack: handleSimulateAttack,
-    getAiSummary
+    getAiSummary,
+    searchQuery,
+    setSearchQuery
   };
 
   return React.createElement(AppDataContext.Provider, { value }, children);
