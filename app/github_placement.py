@@ -400,6 +400,10 @@ def _poll_secret_alerts(db):
             continue
         try:
             source_path, source_line = _location_for_alert(config, alert["number"])
+            # Do not recursively respond to credentials Mirage itself planted.
+            if source_path and source_path.strip("/").startswith("mirage-decoys/"):
+                results.append({"status": "ignored_mirage_decoy", "alert_number": str(alert["number"])})
+                continue
             results.append(_write_alert_decoy(db, config, alert, source_path, source_line, notify=False))
         except requests.RequestException:
             logger.exception("GitHub alert details request failed for alert %s", alert.get("number"))
