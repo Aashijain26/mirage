@@ -35,7 +35,7 @@ const DECOY_TYPES = [
 ];
 
 export function Decoys() {
-  const { decoys, createDecoy, deleteDecoy, searchQuery } = useAppData();
+  const { decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys } = useAppData();
   const [selectedType, setSelectedType] = useState("ssh");
   const [label, setLabel] = useState("");
   const [host, setHost] = useState("");
@@ -188,7 +188,18 @@ export function Decoys() {
 
           {/* Decoy List Items */}
           <div className="space-y-3.5">
-            {filteredDecoys.map((dec, idx) => {
+            {loadingDecoys && (
+              <div className="py-8 text-center text-xs font-mono-tech text-[#8FA0BD]">
+                Loading decoys...
+              </div>
+            )}
+            {!loadingDecoys && filteredDecoys.length === 0 && (
+              <div className="py-8 text-center text-xs font-mono-tech text-[#8FA0BD]">
+                No planted decoys found.
+              </div>
+            )}
+            {!loadingDecoys &&
+              filteredDecoys.map((dec, idx) => {
               const hasHits = (dec.hits || 0) > 0;
 
               return (

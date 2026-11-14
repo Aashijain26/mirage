@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import worldData from "../assets/world-geometry.json";
+import { getCountryCoordinates, projectCoordinates } from "../config/countryCoords.js";
 import {
   ChevronDown,
   AlertCircle,
@@ -24,271 +25,147 @@ export function ThreatMap({ events = [] }) {
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
 
-  // Attack points mapped to SVG coordinates (0 0 1000 500)
-  const baseMapPoints = [
-    {
-      id: 101,
-      ip: "152.59.219.151",
-      city: "London",
-      country: "United Kingdom",
-      token: "ansible-vault-test",
-      score: 60,
-      severity: "medium",
-      sourceType: "Tor Relays",
-      x: 475,
-      y: 110,
-      pulse: true
-    },
-    {
-      id: 102,
-      ip: "159.38.106.251",
-      city: "Ashburn",
-      country: "United States",
-      token: "mailgun-fake",
-      score: 64,
-      severity: "medium",
-      sourceType: "Datacenters",
-      x: 260,
-      y: 155
-    },
-    {
-      id: 103,
-      ip: "142.172.130.211",
-      city: "Amsterdam",
-      country: "Netherlands",
-      token: "grafana-api",
-      score: 68,
-      severity: "medium",
-      sourceType: "Datacenters",
-      x: 495,
-      y: 115
-    },
-    {
-      id: 104,
-      ip: "185.220.101.4",
-      city: "Frankfurt",
-      country: "Germany",
-      token: "prod-repo-aws",
-      score: 91,
-      severity: "high",
-      sourceType: "Tor Relays",
-      x: 520,
-      y: 125
-    },
-    {
-      id: 105,
-      ip: "45.146.164.7",
-      city: "Moscow",
-      country: "Russia",
-      token: "ci-deploy-gh",
-      score: 70,
-      severity: "high",
-      sourceType: "Datacenters",
-      x: 620,
-      y: 110
-    },
-    {
-      id: 120,
-      ip: "185.100.87.19",
-      city: "Sao Paulo",
-      country: "Brazil",
-      token: "prod-repo-aws",
-      score: 47,
-      severity: "low",
-      sourceType: "Residential",
-      x: 345,
-      y: 380
-    },
-    {
-      id: 110,
-      ip: "203.0.113.88",
-      city: "Sydney",
-      country: "Australia",
-      token: "prod-repo-aws",
-      score: 65,
-      severity: "medium",
-      sourceType: "Residential",
-      x: 840,
-      y: 390
-    },
-    {
-      id: 109,
-      ip: "198.51.100.12",
-      city: "Tokyo",
-      country: "Japan",
-      token: "s3-public-read",
-      score: 62,
-      severity: "medium",
-      sourceType: "Residential",
-      x: 810,
-      y: 165
-    },
-    {
-      id: 116,
-      ip: "62.210.140.10",
-      city: "Paris",
-      country: "France",
-      token: "prod-repo-aws",
-      score: 38,
-      severity: "low",
-      sourceType: "Datacenters",
-      x: 480,
-      y: 135
-    },
-    {
-      id: 115,
-      ip: "77.88.55.77",
-      city: "Helsinki",
-      country: "Finland",
-      token: "slack-notifier-hook",
-      score: 40,
-      severity: "low",
-      sourceType: "Residential",
-      x: 550,
-      y: 85
-    },
-    {
-      id: 107,
-      ip: "104.28.19.45",
-      city: "San Francisco",
-      country: "United States",
-      token: "staging-webhook",
-      score: 55,
-      severity: "medium",
-      sourceType: "Residential",
-      x: 170,
-      y: 150
-    },
-    {
-      id: 119,
-      ip: "91.240.118.23",
-      city: "Milan",
-      country: "Italy",
-      token: "ansible-vault-test",
-      score: 44,
-      severity: "low",
-      sourceType: "Residential",
-      x: 510,
-      y: 150
-    },
-    {
-      id: 108,
-      ip: "89.208.103.11",
-      city: "Stockholm",
-      country: "Sweden",
-      token: "backup-api-key",
-      score: 58,
-      severity: "medium",
-      sourceType: "Datacenters",
-      x: 530,
-      y: 90
-    },
-    {
-      id: 111,
-      ip: "185.191.171.12",
-      city: "Dublin",
-      country: "Ireland",
-      token: "ansible-vault-test",
-      score: 52,
-      severity: "medium",
-      sourceType: "Datacenters",
-      x: 460,
-      y: 110
-    },
-    {
-      id: 113,
-      ip: "212.102.40.19",
-      city: "Zurich",
-      country: "Switzerland",
-      token: "mailgun-fake",
-      score: 48,
-      severity: "low",
-      sourceType: "Residential",
-      x: 505,
-      y: 140
-    },
-    {
-      id: 114,
-      ip: "109.236.88.42",
-      city: "Bucharest",
-      country: "Romania",
-      token: "grafana-api",
-      score: 45,
-      severity: "low",
-      sourceType: "Residential",
-      x: 570,
-      y: 145
-    },
-    {
-      id: 118,
-      ip: "194.26.29.112",
-      city: "Prague",
-      country: "Czech Republic",
-      token: "backup-api-key",
-      score: 30,
-      severity: "low",
-      sourceType: "Residential",
-      x: 525,
-      y: 125
-    },
-    {
-      id: 117,
-      ip: "80.94.95.101",
-      city: "Madrid",
-      country: "Spain",
-      token: "staging-webhook",
-      score: 35,
-      severity: "low",
-      sourceType: "Residential",
-      x: 465,
-      y: 165
-    },
-    {
-      id: 112,
-      ip: "176.113.115.89",
-      city: "Kyiv",
-      country: "Ukraine",
-      token: "ci-deploy-gh",
-      score: 42,
-      severity: "low",
-      sourceType: "Residential",
-      x: 590,
-      y: 125
-    }
-  ];
+  // Derive attack points from actual live events
+  const allPlottedPoints = useMemo(() => {
+    if (!Array.isArray(events)) return [];
 
-  // Active highlighted attack (defaults to first)
-  const [activeIncident, setActiveIncident] = useState(baseMapPoints[0]);
+    const points = [];
+    events.forEach((ev, idx) => {
+      let coord = null;
 
-  // Filter points based on selected source
+      // 1. Check direct lat / lng
+      if (ev.geo?.lat != null && ev.geo?.lng != null) {
+        const lat = Number(ev.geo.lat);
+        const lng = Number(ev.geo.lng);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          coord = projectCoordinates(lat, lng);
+        }
+      } else if (ev.geo?.loc && typeof ev.geo.loc === "string" && ev.geo.loc.includes(",")) {
+        // "lat,lng" string from some IP enrichment APIs
+        const [latStr, lngStr] = ev.geo.loc.split(",");
+        const lat = parseFloat(latStr);
+        const lng = parseFloat(lngStr);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          coord = projectCoordinates(lat, lng);
+        }
+      } else if (ev.geo?.country) {
+        // 2. Documented country-level fallback only when country is known
+        const countryName = String(ev.geo.country).trim().toLowerCase();
+        if (
+          countryName &&
+          countryName !== "unknown" &&
+          countryName !== "private network" &&
+          countryName !== "localhost" &&
+          countryName !== "n/a"
+        ) {
+          const countryCoord = getCountryCoordinates(countryName);
+          if (countryCoord) {
+            // Apply slight deterministic spread if multiple points share the same country
+            const spreadOffset = ((idx % 5) - 2) * 4;
+            coord = projectCoordinates(countryCoord.lat, countryCoord.lng);
+            coord = { x: coord.x + spreadOffset, y: coord.y + spreadOffset };
+          }
+        }
+      }
+
+      // Never invent attacker locations if coordinates could not be resolved
+      if (!coord) return;
+
+      const isHigh = (ev.score ?? 0) >= 70;
+      const isMed = (ev.score ?? 0) >= 50 && (ev.score ?? 0) < 70;
+      const severity = ev.severity || (isHigh ? "high" : isMed ? "medium" : "low");
+
+      const flags = Array.isArray(ev.flags) ? ev.flags : [];
+      const isTor = Boolean(ev.geo?.proxy) || flags.includes("tor_exit");
+      const isDc = Boolean(ev.geo?.hosting) || flags.includes("datacenter");
+      const sourceType = isTor ? "Tor Relays" : isDc ? "Datacenters" : "Residential";
+
+      points.push({
+        id: ev.id ?? idx + 1,
+        ip: ev.ip || "Unknown IP",
+        city: ev.geo?.city || ev.geo?.country || "Known Origin",
+        country: ev.geo?.country || "",
+        token: ev.token_label || ev.token_id || "Honeytoken",
+        score: ev.score ?? 0,
+        severity,
+        sourceType,
+        x: Math.max(10, Math.min(990, coord.x)),
+        y: Math.max(10, Math.min(490, coord.y)),
+        pulse: isHigh,
+        ts: ev.ts || ev.created_at
+      });
+    });
+
+    return points;
+  }, [events]);
+
+  // Filter points based on selected source & time range
   const mapPoints = useMemo(() => {
-    if (selectedSource === "Tor Relays") {
-      return baseMapPoints.filter((p) => p.sourceType === "Tor Relays");
+    let pts = allPlottedPoints;
+
+    // Filter by source
+    if (selectedSource !== "All sources") {
+      pts = pts.filter((p) => p.sourceType === selectedSource);
     }
-    if (selectedSource === "Datacenters") {
-      return baseMapPoints.filter((p) => p.sourceType === "Datacenters");
+
+    // Filter by time range
+    const now = Date.now();
+    const rangeMs =
+      selectedRange === "24 hours"
+        ? 24 * 3600 * 1000
+        : selectedRange === "30 days"
+        ? 30 * 86400 * 1000
+        : 7 * 86400 * 1000;
+
+    pts = pts.filter((p) => {
+      if (!p.ts) return true;
+      const t = new Date(p.ts).getTime();
+      return isNaN(t) || now - t <= rangeMs;
+    });
+
+    return pts;
+  }, [allPlottedPoints, selectedSource, selectedRange]);
+
+  // Active highlighted attack (defaults to first available or selected)
+  const [selectedPointId, setSelectedPointId] = useState(null);
+  const activeIncident = useMemo(() => {
+    if (mapPoints.length === 0) return null;
+    if (selectedPointId != null) {
+      const match = mapPoints.find((p) => p.id === selectedPointId);
+      if (match) return match;
     }
-    if (selectedSource === "Residential") {
-      return baseMapPoints.filter((p) => p.sourceType === "Residential");
-    }
-    return baseMapPoints;
-  }, [selectedSource]);
+    return mapPoints[0];
+  }, [mapPoints, selectedPointId]);
 
   // Dynamic sparkline data responsive to selectedRange & live events
   const sparklineBars = useMemo(() => {
-    const total = events.length || 20;
-    if (selectedRange === "24 hours") {
-      return [2, 3, 5, 4, 6, 8, Math.min(28, total)];
-    }
-    if (selectedRange === "30 days") {
-      return [10, 15, 12, 18, 22, 25, Math.min(30, total + 10)];
-    }
-    return [4, 8, 12, 16, 10, 14, Math.min(28, total + 8)];
-  }, [selectedRange, events.length]);
+    const now = Date.now();
+    const rangeMs =
+      selectedRange === "24 hours"
+        ? 24 * 3600 * 1000
+        : selectedRange === "30 days"
+        ? 30 * 86400 * 1000
+        : 7 * 86400 * 1000;
+    const binSize = rangeMs / 7;
+    const bins = [0, 0, 0, 0, 0, 0, 0];
 
-  // Dynamic metrics for Speedometer Gauges
-  const highCount = useMemo(() => events.filter((e) => (e.score ?? 0) >= 70).length || 3, [events]);
-  const tokensHitCount = useMemo(() => 7 + (events.length > 20 ? 1 : 0), [events]);
+    events.forEach((e) => {
+      const ts = e.ts || e.created_at;
+      if (!ts) return;
+      const t = new Date(ts).getTime();
+      const diff = now - t;
+      if (diff >= 0 && diff < rangeMs) {
+        const binIndex = 6 - Math.min(6, Math.floor(diff / binSize));
+        bins[binIndex] = (bins[binIndex] || 0) + 1;
+      }
+    });
+
+    return bins;
+  }, [events, selectedRange]);
+
+  // Dynamic metrics for Speedometer Gauges - derived strictly from real events
+  const highCount = useMemo(() => events.filter((e) => (e.score ?? 0) >= 70).length, [events]);
+  const tokensHitCount = useMemo(() => new Set(events.map((e) => e.token_id || e.token_label).filter(Boolean)).size, [events]);
 
   // Calculate dynamic SVG viewBox for zooming & panning
   const currentViewBox = useMemo(() => {
@@ -314,7 +191,7 @@ export function ThreatMap({ events = [] }) {
   };
 
   const handleSelectPoint = (pt) => {
-    setActiveIncident(pt);
+    setSelectedPointId(pt.id);
     // Smoothly focus on selected pin
     setCenter({ x: pt.x, y: pt.y });
     if (zoomLevel < 2) setZoomLevel(2.2);
@@ -367,6 +244,17 @@ export function ThreatMap({ events = [] }) {
       handleZoomOut();
     }
   };
+
+  // Dynamic gauge geometry
+  const highRatio = Math.min(1, Math.max(0, highCount / 20));
+  const highAngle = (1 - highRatio) * Math.PI;
+  const highX = 50 + 38 * Math.cos(highAngle);
+  const highY = 48 - 38 * Math.sin(highAngle);
+
+  const tokenRatio = Math.min(1, Math.max(0, tokensHitCount / 14));
+  const tokenAngle = (1 - tokenRatio) * Math.PI;
+  const tokenX = 50 + 38 * Math.cos(tokenAngle);
+  const tokenY = 48 - 38 * Math.sin(tokenAngle);
 
   return (
     <SpotlightCard className="bg-[#111726] border border-[#1e2a40] rounded-2xl p-5 shadow-xl overflow-hidden relative">
@@ -585,11 +473,11 @@ export function ThreatMap({ events = [] }) {
               const isMed = pt.severity === "medium";
               const color = isHigh ? "#ef4444" : isMed ? "#f97316" : "#22c55e";
               const isHovered = hoveredPoint === i;
-              const isSelected = activeIncident.ip === pt.ip;
+              const isSelected = activeIncident?.ip === pt.ip;
 
               return (
                 <g
-                  key={i}
+                  key={pt.id || i}
                   transform={`translate(${pt.x}, ${pt.y})`}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -612,7 +500,7 @@ export function ThreatMap({ events = [] }) {
                     />
                   )}
 
-                  {/* Radar pulse on active target (London) */}
+                  {/* Radar pulse on high severity targets */}
                   {pt.pulse && (
                     <>
                       <circle cx="0" cy="0" r="16" fill="none" stroke="#f97316" className="pulse-ring" />
@@ -649,61 +537,117 @@ export function ThreatMap({ events = [] }) {
                 </g>
               );
             })}
+
+            {/* Empty state when no geolocated threat events exist */}
+            {mapPoints.length === 0 && (
+              <g transform="translate(500, 250)">
+                <rect
+                  x="-180"
+                  y="-35"
+                  width="360"
+                  height="70"
+                  rx="10"
+                  fill="#0b1322"
+                  fillOpacity="0.88"
+                  stroke="#1e3a5f"
+                  strokeWidth="1.5"
+                />
+                <text
+                  textAnchor="middle"
+                  y="-6"
+                  fill="#f1f5f9"
+                  fontSize="12"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                  letterSpacing="1.5"
+                >
+                  NO GEOLOCATED THREATS RECORDED
+                </text>
+                <text
+                  textAnchor="middle"
+                  y="18"
+                  fill="#8FA0BD"
+                  fontSize="11"
+                  fontFamily="monospace"
+                >
+                  Traps armed · Telemetry listening for triggers
+                </text>
+              </g>
+            )}
           </svg>
 
           {/* Floating SUSPICIOUS ACTIVITY Card (Actively responsive to selected pin!) */}
           <div className="absolute top-3 right-3 sm:right-5 w-68 bg-[#0f172a]/95 border border-[#1e3a5f] rounded-xl p-3.5 shadow-2xl backdrop-blur-md z-10 transition-all">
             <div className="flex items-center justify-between text-[11px] font-mono-tech text-[#38bdf8] uppercase tracking-wider mb-1.5">
               <span>SUSPICIOUS ACTIVITY</span>
-              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+              <AlertCircle className={`w-3.5 h-3.5 ${activeIncident ? "text-amber-400" : "text-slate-500"}`} />
             </div>
 
-            {/* Currently Selected Pin Details */}
-            <div className="border-b border-[#1e2a40] pb-2 mb-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold font-mono-tech text-white">
-                  {activeIncident.ip}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/incidents/${activeIncident.id || 101}`)}
-                  title="Inspect Incident"
-                  className="text-[#38bdf8] hover:text-white p-1 rounded-sm transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <p className="text-[11px] text-[#8FA0BD] truncate mt-0.5">
-                {activeIncident.city} ·{" "}
-                <span className="text-[#38bdf8]">{activeIncident.token}</span> · score{" "}
-                {activeIncident.score}
-              </p>
-            </div>
-
-            {/* List of other recent hits (clicking swaps selected incident!) */}
-            <div className="space-y-1.5 text-xs font-mono-tech">
-              {baseMapPoints.slice(1, 4).map((pt, pIdx) => (
-                <div
-                  key={pIdx}
-                  onClick={() => handleSelectPoint(pt)}
-                  className={`flex items-center justify-between px-1.5 py-1 rounded-sm cursor-pointer transition-colors ${
-                    activeIncident.ip === pt.ip
-                      ? "bg-blue-950/70 border border-blue-700/50 text-white"
-                      : "text-[#cbd5e1] hover:bg-white/5"
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 truncate">
-                    {pt.severity === "high" ? (
-                      <span className="text-rose-400 text-[10px] leading-none shrink-0">▲</span>
-                    ) : (
-                      <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-                    )}
-                    <span className="truncate">{pt.ip}</span>
+            {activeIncident ? (
+              <>
+                {/* Currently Selected Pin Details */}
+                <div className="border-b border-[#1e2a40] pb-2 mb-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold font-mono-tech text-white">
+                      {activeIncident.ip}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/incidents/${activeIncident.id || 1}`)}
+                      title="Inspect Incident"
+                      className="text-[#38bdf8] hover:text-white p-1 rounded-sm transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <span className="text-[11px] text-[#64748b]">{pt.city}</span>
+                  <p className="text-[11px] text-[#8FA0BD] truncate mt-0.5">
+                    {activeIncident.city} ·{" "}
+                    <span className="text-[#38bdf8]">{activeIncident.token}</span> · score{" "}
+                    {activeIncident.score}
+                  </p>
                 </div>
-              ))}
-            </div>
+
+                {/* List of other recent hits */}
+                <div className="space-y-1.5 text-xs font-mono-tech">
+                  {mapPoints
+                    .filter((pt) => pt.id !== activeIncident.id)
+                    .slice(0, 3)
+                    .map((pt, pIdx) => (
+                      <div
+                        key={pIdx}
+                        onClick={() => handleSelectPoint(pt)}
+                        className={`flex items-center justify-between px-1.5 py-1 rounded-sm cursor-pointer transition-colors ${
+                          activeIncident.ip === pt.ip
+                            ? "bg-blue-950/70 border border-blue-700/50 text-white"
+                            : "text-[#cbd5e1] hover:bg-white/5"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          {pt.severity === "high" ? (
+                            <span className="text-rose-400 text-[10px] leading-none shrink-0">▲</span>
+                          ) : (
+                            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                          )}
+                          <span className="truncate">{pt.ip}</span>
+                        </div>
+                        <span className="text-[11px] text-[#64748b]">{pt.city}</span>
+                      </div>
+                    ))}
+                  {mapPoints.length <= 1 && (
+                    <div className="text-[11px] text-[#64748b] italic py-1">
+                      No other geolocated hits
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="py-4 text-center">
+                <p className="text-xs font-mono-tech text-white font-bold">No Active Threats</p>
+                <p className="text-[11px] font-mono-tech text-[#8FA0BD] mt-1">
+                  Awaiting token telemetry
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Bottom Floating Pill with icons & quick reset */}
@@ -733,7 +677,7 @@ export function ThreatMap({ events = [] }) {
                   strokeLinecap="round"
                 />
                 <path
-                  d="M 12 48 A 38 38 0 0 1 35 20"
+                  d={highRatio > 0 ? `M 12 48 A 38 38 0 0 1 ${highX.toFixed(1)} ${highY.toFixed(1)}` : "M 12 48 A 38 38 0 0 1 12 48"}
                   fill="none"
                   stroke="#f97316"
                   strokeWidth="7"
@@ -742,8 +686,8 @@ export function ThreatMap({ events = [] }) {
                 <line
                   x1="50"
                   y1="48"
-                  x2="35"
-                  y2="20"
+                  x2={highX.toFixed(1)}
+                  y2={highY.toFixed(1)}
                   stroke="white"
                   strokeWidth="2"
                   strokeLinecap="round"
@@ -756,7 +700,7 @@ export function ThreatMap({ events = [] }) {
               </div>
             </div>
             <span className="text-[11px] font-mono-tech text-[#8FA0BD] text-center mt-1 group-hover:text-white transition-colors">
-              / 20 High incidents
+              {highCount} High incident{highCount === 1 ? "" : "s"}
             </span>
           </div>
 
@@ -777,7 +721,7 @@ export function ThreatMap({ events = [] }) {
                   strokeLinecap="round"
                 />
                 <path
-                  d="M 12 48 A 38 38 0 0 1 50 10"
+                  d={tokenRatio > 0 ? `M 12 48 A 38 38 0 0 1 ${tokenX.toFixed(1)} ${tokenY.toFixed(1)}` : "M 12 48 A 38 38 0 0 1 12 48"}
                   fill="none"
                   stroke="#22c55e"
                   strokeWidth="7"
@@ -786,8 +730,8 @@ export function ThreatMap({ events = [] }) {
                 <line
                   x1="50"
                   y1="48"
-                  x2="50"
-                  y2="10"
+                  x2={tokenX.toFixed(1)}
+                  y2={tokenY.toFixed(1)}
                   stroke="white"
                   strokeWidth="2"
                   strokeLinecap="round"
@@ -800,7 +744,7 @@ export function ThreatMap({ events = [] }) {
               </div>
             </div>
             <span className="text-[11px] font-mono-tech text-[#8FA0BD] text-center mt-1 group-hover:text-white transition-colors">
-              / 14 Tokens hit
+              {tokensHitCount} Token{tokensHitCount === 1 ? "" : "s"} hit
             </span>
           </div>
         </div>

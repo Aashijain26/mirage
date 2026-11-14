@@ -217,7 +217,7 @@ export function Tokens() {
 
                   {/* Context / Location */}
                   <div className="text-[11px] font-mono-tech text-[#8FA0BD] truncate">
-                    {tok.context || "github.com/acme/payments-service"}
+                    {tok.context || "Unspecified location"}
                   </div>
 
                   {/* Hit Progress Bar */}
@@ -228,7 +228,7 @@ export function Tokens() {
                         <div className="flex-1 h-full bg-hazard-stripes-dark" />
                       </div>
                       <div className="text-[10px] font-mono-tech text-[#8FA0BD]">
-                        Hit {tok.hits} times, last {tok.last_hit || "50 min ago"}
+                        Hit {tok.hits} times{tok.last_hit ? `, last ${tok.last_hit}` : ""}
                       </div>
                     </div>
                   ) : (
@@ -239,6 +239,11 @@ export function Tokens() {
                 </div>
               );
             })}
+            {filteredTokens.length === 0 && (
+              <div className="py-8 text-center text-xs font-mono-tech text-[#8FA0BD]">
+                No planted honeytokens found.
+              </div>
+            )}
           </div>
         </SpotlightCard>
       </div>

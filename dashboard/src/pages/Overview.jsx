@@ -17,21 +17,21 @@ export function Overview() {
   const { events, tokens } = useAppData();
   const [incidentIndex, setIncidentIndex] = useState(0);
 
-  // Dynamic severity counts derived from live events
+  // Dynamic severity counts derived from live events (no hardcoded fallbacks)
   const highCount = useMemo(
-    () => events.filter((e) => (e.score ?? 0) >= 70).length || 3,
+    () => events.filter((e) => (e.score ?? 0) >= 70).length,
     [events]
   );
   const medCount = useMemo(
-    () => events.filter((e) => (e.score ?? 0) >= 50 && (e.score ?? 0) < 70).length || 8,
+    () => events.filter((e) => (e.score ?? 0) >= 50 && (e.score ?? 0) < 70).length,
     [events]
   );
   const lowCount = useMemo(
-    () => events.filter((e) => (e.score ?? 0) < 50).length || 9,
+    () => events.filter((e) => (e.score ?? 0) < 50).length,
     [events]
   );
   const totalRequests = useMemo(
-    () => 77 + Math.max(0, events.length - 20),
+    () => events.length,
     [events.length]
   );
 
@@ -41,46 +41,106 @@ export function Overview() {
     return events.slice(0, 5).map((ev) => ({
       id: ev.id,
       ip: ev.ip,
-      city: ev.geo?.city || "London",
-      country: ev.geo?.country || "United Kingdom",
-      token: ev.token_label || "ansible-vault-test",
-      score: ev.score || 60,
-      flags: Array.isArray(ev.flags) ? ev.flags : ["canary_url", "odd_hour"]
+      city: ev.geo?.city || ev.geo?.country || "Unknown Location",
+      country: ev.geo?.country || "",
+      token: ev.token_label || ev.token_id || "Honeytoken",
+      score: ev.score ?? 0,
+      flags: Array.isArray(ev.flags) ? ev.flags : []
     }));
   }, [events]);
 
-  const currentInc = latestIncidents[incidentIndex] || latestIncidents[0] || {
-    ip: "152.59.219.151",
-    city: "London",
-    country: "United Kingdom",
-    token: "ansible-vault-test",
-    score: 60,
-    flags: ["canary_url", "odd_hour", "rapid_fire"]
-  };
+  const currentInc = latestIncidents[incidentIndex] || latestIncidents[0] || null;
 
-  // Dynamic hits per day data responsive to live attacks
+  // Dynamic hits per day data responsive to actual timestamps over last 7 days
   const dayHits = useMemo(() => {
-    const liveBonus = Math.max(0, events.length - 20);
-    return [
-      { day: "Sun", total: 2, low: 2, med: 0, high: 0 },
-      { day: "Mon", total: 4, low: 3, med: 1, high: 0 },
-      { day: "Tue", total: 9, low: 5, med: 3, high: 1 },
-      { day: "Wed", total: 4, low: 3, med: 1, high: 0 },
-      { day: "Thu", total: 5, low: 2, med: 2, high: 1 },
-      { day: "Fri", total: 7, low: 3, med: 2, high: 2 },
-      { day: "Sat", total: 46 + liveBonus, low: 10, med: 18, high: 18 + liveBonus }
-    ];
-  }, [events.length]);
+    const days = [];
+    const now = new Date();
+    // 7 days ending today
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
+      const dateStr = d.toISOString().split("T")[0];
+      days.push({ day: dayName, dateStr, total: 0, low: 0, med: 0, high: 0 });
+    }
 
-  // Dynamic most hit token
+    events.forEach((ev) => {
+      const ts = ev.ts || ev.created_at;
+      if (!ts) return;
+      try {
+        const evDate = new Date(ts).toISOString().split("T")[0];
+        const match = days.find((d) => d.dateStr === evDate);
+        if (match) {
+          match.total += 1;
+          const score = ev.score ?? 0;
+          if (score >= 70) match.high += 1;
+          else if (score >= 50) match.med += 1;
+          else match.low += 1;
+        }
+      } catch {
+        // ignore invalid date
+      }
+    });
+
+    return days;
+  }, [events]);
+
+  // Dynamic most hit token derived from real tokens and events
   const mostHit = useMemo(() => {
-    const tok = tokens.find((t) => t.label === "prod-repo-aws") || tokens[0];
-    const liveBonus = Math.max(0, events.length - 20);
-    return {
-      label: tok?.label || "prod-repo-aws",
-      hits: (tok?.hits || 28) + liveBonus
-    };
-  }, [tokens, events.length]);
+    const tokenCounts = {};
+    events.forEach((ev) => {
+      const key = ev.token_label || ev.token_id;
+      if (key) tokenCounts[key] = (tokenCounts[key] || 0) + 1;
+    });
+
+    tokens.forEach((t) => {
+      const key = t.label || t.id;
+      if (key && typeof t.hits === "number") {
+        tokenCounts[key] = Math.max(tokenCounts[key] || 0, t.hits);
+      }
+    });
+
+    let topLabel = tokens[0]?.label || "None";
+    let topHits = 0;
+    for (const [k, v] of Object.entries(tokenCounts)) {
+      if (v > topHits) {
+        topHits = v;
+        topLabel = k;
+      }
+    }
+
+    return { label: topLabel, hits: topHits };
+  }, [tokens, events]);
+
+  // Derived coverage metrics
+  const tokensHitCount = useMemo(
+    () => new Set(events.map((e) => e.token_id || e.token_label).filter(Boolean)).size,
+    [events]
+  );
+
+  const hitsToday = useMemo(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    return events.filter((e) => {
+      const ts = e.ts || e.created_at;
+      if (!ts) return false;
+      try {
+        return new Date(ts).toISOString().split("T")[0] === todayStr;
+      } catch {
+        return false;
+      }
+    }).length;
+  }, [events]);
+
+  const unknownSourceCount = useMemo(
+    () =>
+      events.filter(
+        (e) =>
+          !e.geo?.country ||
+          e.geo.country.toLowerCase() === "unknown" ||
+          e.geo.country.toLowerCase() === "private network"
+      ).length,
+    [events]
+  );
 
   return (
     <div className="p-6 sm:p-8 space-y-6 max-w-7xl mx-auto">
@@ -164,10 +224,13 @@ export function Overview() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-mono-tech">
                 <span className="text-[#8FA0BD]">Tokens planted</span>
-                <span className="text-[#38bdf8] font-bold">{tokens.length || 14}</span>
+                <span className="text-[#38bdf8] font-bold">{tokens.length}</span>
               </div>
               <div className="h-1.5 w-full bg-[#182338] rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-blue-500 to-[#38bdf8] w-full rounded-full shadow-[0_0_10px_rgba(56,189,248,0.5)]" />
+                <div
+                  style={{ width: `${tokens.length > 0 ? 100 : 0}%` }}
+                  className="h-full bg-gradient-to-r from-blue-500 to-[#38bdf8] rounded-full shadow-[0_0_10px_rgba(56,189,248,0.5)]"
+                />
               </div>
             </div>
 
@@ -175,13 +238,20 @@ export function Overview() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-mono-tech">
                 <span className="text-[#8FA0BD]">Tokens hit</span>
-                <span className="text-[#fb923c] font-bold">
-                  {7 + (events.length > 20 ? 1 : 0)}
-                </span>
+                <span className="text-[#fb923c] font-bold">{tokensHitCount}</span>
               </div>
               <div className="h-1.5 w-full bg-[#182338] rounded-full flex overflow-hidden">
-                <div className="h-full bg-[#f97316] w-1/2" />
-                <div className="h-full w-1/2 bg-hazard-stripes-dark" />
+                <div
+                  style={{
+                    width: `${
+                      tokens.length > 0
+                        ? Math.min(100, Math.round((tokensHitCount / tokens.length) * 100))
+                        : 0
+                    }%`
+                  }}
+                  className="h-full bg-[#f97316]"
+                />
+                <div className="h-full flex-1 bg-hazard-stripes-dark" />
               </div>
             </div>
 
@@ -189,12 +259,19 @@ export function Overview() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-mono-tech">
                 <span className="text-[#8FA0BD]">Hits today</span>
-                <span className="text-[#f87171] font-bold">
-                  {46 + Math.max(0, events.length - 20)}
-                </span>
+                <span className="text-[#f87171] font-bold">{hitsToday}</span>
               </div>
               <div className="h-1.5 w-full bg-[#182338] rounded-full overflow-hidden">
-                <div className="h-full bg-[#ef4444] w-[88%] rounded-full shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-300" />
+                <div
+                  style={{
+                    width: `${
+                      totalRequests > 0
+                        ? Math.min(100, Math.round((hitsToday / totalRequests) * 100))
+                        : 0
+                    }%`
+                  }}
+                  className="h-full bg-[#ef4444] rounded-full shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-300"
+                />
               </div>
             </div>
           </div>
@@ -245,7 +322,7 @@ export function Overview() {
         >
           <Shield className="w-4 h-4 text-[#38bdf8] fill-blue-500/20" />
           <span className="text-[#8FA0BD] group-hover:text-blue-300 transition-colors">Low</span>
-          <span className="text-white font-bold text-sm">20</span>
+          <span className="text-white font-bold text-sm">{lowCount}</span>
           <span className="text-[#64748b]">/ {totalRequests}</span>
         </div>
 
@@ -256,7 +333,7 @@ export function Overview() {
         >
           <AlertCircle className="w-4 h-4 text-amber-400 fill-amber-500/20" />
           <span className="text-[#8FA0BD] group-hover:text-amber-300 transition-colors">Medium</span>
-          <span className="text-white font-bold text-sm">30</span>
+          <span className="text-white font-bold text-sm">{medCount}</span>
           <span className="text-[#64748b]">/ {totalRequests}</span>
         </div>
 
@@ -267,9 +344,7 @@ export function Overview() {
         >
           <AlertTriangle className="w-4 h-4 text-rose-400 fill-rose-500/20" />
           <span className="text-[#8FA0BD] group-hover:text-rose-300 transition-colors">High</span>
-          <span className="text-white font-bold text-sm">
-            {25 + Math.max(0, events.length - 20)}
-          </span>
+          <span className="text-white font-bold text-sm">{highCount}</span>
           <span className="text-[#64748b]">/ {totalRequests}</span>
         </div>
 
@@ -280,7 +355,7 @@ export function Overview() {
         >
           <HelpCircle className="w-4 h-4 text-[#8FA0BD]" />
           <span className="text-[#8FA0BD] group-hover:text-white transition-colors">Unknown source</span>
-          <span className="text-white font-bold text-sm">2</span>
+          <span className="text-white font-bold text-sm">{unknownSourceCount}</span>
           <span className="text-[#64748b]">/ {totalRequests}</span>
         </div>
       </SpotlightCard>
@@ -300,11 +375,11 @@ export function Overview() {
           {/* 7 Vertical Capsule Bars */}
           <div className="flex items-end justify-between gap-2 sm:gap-3 py-6 px-2">
             {dayHits.map((d, i) => {
-              const maxVal = Math.max(46, dayHits[6].total);
-              const fillPct = Math.max(14, (d.total / maxVal) * 88);
-              const lowPct = (d.low / d.total) * 100;
-              const medPct = (d.med / d.total) * 100;
-              const highPct = (d.high / d.total) * 100;
+              const maxVal = Math.max(1, ...dayHits.map((item) => item.total));
+              const fillPct = d.total > 0 ? Math.max(14, (d.total / maxVal) * 88) : 0;
+              const lowPct = d.total > 0 ? (d.low / d.total) * 100 : 0;
+              const medPct = d.total > 0 ? (d.med / d.total) * 100 : 0;
+              const highPct = d.total > 0 ? (d.high / d.total) * 100 : 0;
 
               return (
                 <div key={i} className="flex flex-col items-center gap-2 flex-1 group cursor-pointer">
@@ -329,7 +404,9 @@ export function Overview() {
                       {d.med > 0 && (
                         <div style={{ height: `${medPct}%` }} className="w-full bg-[#f97316]" />
                       )}
-                      <div style={{ height: `${lowPct}%` }} className="w-full bg-[#22c55e]" />
+                      {d.low > 0 && (
+                        <div style={{ height: `${lowPct}%` }} className="w-full bg-[#22c55e]" />
+                      )}
                     </div>
                   </div>
 
@@ -371,87 +448,98 @@ export function Overview() {
           </div>
 
           {/* Incident Content */}
-          <div className="py-4 space-y-3 relative z-10">
-            <h2 className="font-heading text-lg font-bold text-white tracking-wide">
-              LATEST INCIDENT
-            </h2>
+          {currentInc ? (
+            <>
+              <div className="py-4 space-y-3 relative z-10">
+                <h2 className="font-heading text-lg font-bold text-white tracking-wide">
+                  LATEST INCIDENT
+                </h2>
 
-            <div
-              onClick={() => navigate(`/incidents/${currentInc.id || 101}`)}
-              className="space-y-1 cursor-pointer group/link"
-            >
-              <p className="font-heading text-2xl sm:text-3xl font-extrabold text-white group-hover/link:text-rose-300 transition-colors">
-                {currentInc.ip}
-              </p>
-              <p className="text-xs text-rose-200/70">
-                {currentInc.city}, {currentInc.country}
-              </p>
-            </div>
-
-            {/* Tags row */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-2">
-              <span className="inline-flex items-center gap-1 bg-teal-950/80 border border-teal-700/60 text-[#34d399] px-2.5 py-0.5 rounded-full text-xs font-mono-tech">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
-                {currentInc.token}
-              </span>
-
-              <span className="bg-[#181012] border border-red-900/60 text-gray-300 px-2.5 py-0.5 rounded-full text-xs font-mono-tech">
-                score {currentInc.score}
-              </span>
-
-              {currentInc.flags.map((flag, idx) => (
-                <span
-                  key={idx}
-                  className="bg-[#181012] border border-red-900/40 text-rose-200/80 px-2 py-0.5 rounded-full text-[11px] font-mono-tech"
+                <div
+                  onClick={() => navigate(`/incidents/${currentInc.id}`)}
+                  className="space-y-1 cursor-pointer group/link"
                 >
-                  {flag}
+                  <p className="font-heading text-2xl sm:text-3xl font-extrabold text-white group-hover/link:text-rose-300 transition-colors">
+                    {currentInc.ip}
+                  </p>
+                  <p className="text-xs text-rose-200/70">
+                    {currentInc.city}{currentInc.country ? `, ${currentInc.country}` : ""}
+                  </p>
+                </div>
+
+                {/* Tags row */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                  <span className="inline-flex items-center gap-1 bg-teal-950/80 border border-teal-700/60 text-[#34d399] px-2.5 py-0.5 rounded-full text-xs font-mono-tech">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
+                    {currentInc.token}
+                  </span>
+
+                  <span className="bg-[#181012] border border-red-900/60 text-gray-300 px-2.5 py-0.5 rounded-full text-xs font-mono-tech">
+                    score {currentInc.score}
+                  </span>
+
+                  {currentInc.flags.map((flag, idx) => (
+                    <span
+                      key={idx}
+                      className="bg-[#181012] border border-red-900/40 text-rose-200/80 px-2 py-0.5 rounded-full text-[11px] font-mono-tech"
+                    >
+                      {flag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Carousel Footer */}
+              <div className="flex items-center justify-between pt-4 border-t border-rose-950/60 relative z-10">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setIncidentIndex((prev) =>
+                        prev === 0 ? latestIncidents.length - 1 : prev - 1
+                      )
+                    }
+                    className="w-8 h-8 rounded-full border border-rose-800/60 flex items-center justify-center text-white hover:bg-white/15 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_12px_rgba(255,255,255,0.2)] transition-all cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setIncidentIndex((prev) =>
+                        prev === latestIncidents.length - 1 ? 0 : prev + 1
+                      )
+                    }
+                    className="w-8 h-8 rounded-full border border-rose-800/60 flex items-center justify-center text-white hover:bg-white/15 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_12px_rgba(255,255,255,0.2)] transition-all cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Progress line */}
+                <div className="flex-1 mx-4 h-0.5 bg-rose-950 rounded-full overflow-hidden">
+                  <div
+                    style={{
+                      width: `${((incidentIndex + 1) / Math.max(1, latestIncidents.length)) * 100}%`
+                    }}
+                    className="h-full bg-white transition-all duration-300"
+                  />
+                </div>
+
+                {/* Index label */}
+                <span className="text-xs font-mono-tech text-rose-300/80">
+                  {incidentIndex + 1}/{latestIncidents.length || 1}
                 </span>
-              ))}
+              </div>
+            </>
+          ) : (
+            <div className="py-12 text-center space-y-2 relative z-10">
+              <p className="font-heading text-lg font-bold text-white">NO RECENT INCIDENTS</p>
+              <p className="text-xs text-rose-200/70 font-mono-tech">
+                Traps are active and monitoring for deceptive credential access.
+              </p>
             </div>
-          </div>
-
-          {/* Carousel Footer */}
-          <div className="flex items-center justify-between pt-4 border-t border-rose-950/60 relative z-10">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setIncidentIndex((prev) =>
-                    prev === 0 ? latestIncidents.length - 1 : prev - 1
-                  )
-                }
-                className="w-8 h-8 rounded-full border border-rose-800/60 flex items-center justify-center text-white hover:bg-white/15 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_12px_rgba(255,255,255,0.2)] transition-all cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setIncidentIndex((prev) =>
-                    prev === latestIncidents.length - 1 ? 0 : prev + 1
-                  )
-                }
-                className="w-8 h-8 rounded-full border border-rose-800/60 flex items-center justify-center text-white hover:bg-white/15 hover:ring-2 hover:ring-white/30 hover:shadow-[0_0_12px_rgba(255,255,255,0.2)] transition-all cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Progress line */}
-            <div className="flex-1 mx-4 h-0.5 bg-rose-950 rounded-full overflow-hidden">
-              <div
-                style={{
-                  width: `${((incidentIndex + 1) / Math.max(1, latestIncidents.length)) * 100}%`
-                }}
-                className="h-full bg-white transition-all duration-300"
-              />
-            </div>
-
-            {/* Index label */}
-            <span className="text-xs font-mono-tech text-rose-300/80">
-              {incidentIndex + 1}/{latestIncidents.length || 1}
-            </span>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -899,3 +899,4 @@ def test_admin_decoys_api(test_db):
             assert "placement_note" in d
     finally:
         app.dependency_overrides.clear()
+

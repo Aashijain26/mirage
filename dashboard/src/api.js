@@ -71,17 +71,53 @@ export async function deleteToken(id) {
 
 export async function getDecoys() {
   if (isMockMode) return mockGetDecoys();
-  return [];
+  try {
+    const res = await apiClient.post(ENDPOINTS.decoys, {
+      stack: "FastAPI React Production",
+      token_types: ["aws", "api_key", "db", "webhook"]
+    });
+    const list = normalizeList(res.data, "decoys");
+    return list.map((d, idx) => ({
+      id: d.id || `decoy-${idx + 1}`,
+      type: d.token_type || d.type || "env",
+      badge: (d.token_type || d.type || "ENV").toUpperCase(),
+      label: d.label || (Array.isArray(d.var_names) && d.var_names.length ? d.var_names[0] : "Decoy Credential"),
+      host: d.host || "production",
+      path: d.path || d.file_path || "/app/.env",
+      status: d.status || "Untouched",
+      hits: d.hits || 0,
+      var_names: d.var_names || [],
+      comment: d.comment || "",
+      placement_note: d.placement_note || ""
+    }));
+  } catch (err) {
+    if (err.response?.status === 401) {
+      console.warn("Unauthorized request to get decoys");
+    } else {
+      console.error("Failed to fetch decoys:", err.message);
+    }
+    return [];
+  }
 }
 
 export async function createDecoy(body) {
   if (isMockMode) return mockCreateDecoy(body);
-  return body;
+  return {
+    id: `dec-${Date.now()}`,
+    type: body.type || "env",
+    badge: (body.type || "ENV").toUpperCase(),
+    label: body.label || "New Decoy",
+    host: body.host || "web-server-01",
+    path: body.path || `/srv/app/${body.label || "secret"}`,
+    status: "Untouched",
+    hits: 0,
+    last_hit: null
+  };
 }
 
 export async function deleteDecoy(id) {
   if (isMockMode) return mockDeleteDecoy(id);
-  return { ok: true };
+  return { ok: true, id };
 }
 
 export async function summarize(eventIds) {

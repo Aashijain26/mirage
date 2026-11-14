@@ -4,10 +4,40 @@ import { AlertTriangle, AlertCircle, ShieldCheck } from "lucide-react";
 import { SpotlightCard } from "../components/SpotlightCard.jsx";
 import { useAppData } from "../hooks/useAppData.js";
 
+function formatTimeAgo(ts) {
+  if (!ts) return "Just now";
+  const diff = Date.now() - new Date(ts).getTime();
+  if (isNaN(diff) || diff < 0) return "Just now";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export function Incidents() {
   const navigate = useNavigate();
   const { events, searchQuery } = useAppData();
   const [filter, setFilter] = useState("all");
+
+  const lastHourSummary = useMemo(() => {
+    const oneHourAgo = Date.now() - 3600 * 1000;
+    const recent = events.filter((e) => {
+      const ts = e.ts || e.created_at;
+      if (!ts) return false;
+      const t = new Date(ts).getTime();
+      return !isNaN(t) && t >= oneHourAgo;
+    });
+    const high = recent.filter((e) => (e.score ?? 0) >= 70).length;
+    if (recent.length === 0) {
+      return "No hits in the last hour.";
+    }
+    const hitWord = recent.length === 1 ? "hit" : "hits";
+    const highWord = high === 1 ? "is" : "are";
+    return `${recent.length} ${hitWord} in the last hour. ${high} ${highWord} high severity.`;
+  }, [events]);
 
   const filteredEvents = useMemo(() => {
     let list = events;
@@ -37,7 +67,7 @@ export function Incidents() {
     <div className="p-6 sm:p-8 space-y-4 max-w-7xl mx-auto">
       {/* Sub-header status text */}
       <div className="text-xs text-[#8FA0BD] font-mono-tech">
-        <span>4 hits in the last hour. 1 is high severity.</span>
+        <span>{lastHourSummary}</span>
       </div>
 
       {/* Main Table Card: [06] \\ LOG */}
@@ -135,7 +165,7 @@ export function Incidents() {
                     <td className="py-3.5 px-4">
                       <span className="inline-flex items-center gap-1.5 bg-teal-950/70 border border-teal-700/50 text-[#34d399] px-2.5 py-1 rounded-full text-[11px]">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
-                        {ev.token_label || "ansible-vault-test"}
+                        {ev.token_label || ev.token_id || "Honeytoken"}
                       </span>
                     </td>
 
@@ -173,11 +203,18 @@ export function Incidents() {
 
                     {/* WHEN */}
                     <td className="py-3.5 px-4 text-right text-[#8FA0BD] text-[11px]">
-                      {ev.time_ago || "40 min ago"}
+                      {ev.time_ago || formatTimeAgo(ev.ts || ev.created_at)}
                     </td>
                   </tr>
                 );
               })}
+              {filteredEvents.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-[#8FA0BD]">
+                    No incidents recorded. Traps are armed and listening for triggers.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

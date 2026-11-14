@@ -1,5 +1,5 @@
 """
-Telegram Alert Dispatcher for the Snare platform.
+Telegram Alert Dispatcher for the Mirage platform.
 
 HARD CONTRACT RULES:
 1. Credentials loaded strictly from environment variables:
@@ -21,8 +21,6 @@ try:
 except ImportError:  # Optional for app startup; listed in requirements for alert delivery.
     requests = None
 from typing import Any, Dict, List, Optional
-
-from app.intel.sanitize import sanitize_untrusted_text
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +77,8 @@ def send_alert(incident: Dict[str, Any]) -> bool:
         _SUPPRESSED_ALERTS_COUNT = 0
         _LAST_DISPATCH_TIME = now
 
+    from app.intel.sanitize import sanitize_untrusted_text
+
     # Sanitize all untrusted fields
     inc_id = sanitize_untrusted_text(incident.get("id") or incident.get("incident_id") or "New", max_length=32)
     score = incident.get("score", 40)
@@ -108,7 +108,7 @@ def send_alert(incident: Dict[str, Any]) -> bool:
 
     # Build PLAIN TEXT message (strictly no parse_mode)
     lines: List[str] = [
-        "[SNARE SECURITY ALERT] Honeytoken Triggered!",
+        "[MIRAGE SECURITY ALERT] Honeytoken Triggered!",
         "",
         f"Incident ID: #{inc_id}",
         f"Severity: {severity} (Score: {score}/100)",
