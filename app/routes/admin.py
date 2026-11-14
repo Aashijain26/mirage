@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.intel.summarizer import summarize_incident
+from app.intel.summarizer import summarize_incident as run_summarize_incident
+from app.intel.decoys import generate_decoys as run_generate_decoys
 from app.honeytoken_service import generate_honeytoken, token_public_id
 from app.models import Event, Honeytoken, Incident
 
@@ -36,6 +37,11 @@ class TokenCreate(BaseModel):
 
 class SummaryRequest(BaseModel):
     event_ids: list[int] = Field(default_factory=list, max_length=500)
+
+
+class DecoyRequest(BaseModel):
+    stack: str = Field(default="", max_length=500)
+    token_types: list[str] = Field(default_factory=lambda: ["aws", "api_key"], max_length=10)
 
 
 def _dt(value):
@@ -64,9 +70,16 @@ def serialize_event(event):
     }
 
 
-def serialize_incident(incident, events):
+def serialize_incident(incident, events, token_map=None):
     relevant = [event for event in events if event.incident_id == incident.id]
     latest = relevant[-1] if relevant else None
+    token_id = latest.token_id if latest else "unknown-token"
+    # Resolve human-readable label from the honeytoken table
+    token_label = None
+    if token_map and latest:
+        ht = token_map.get(latest.honeytoken_id)
+        if ht:
+            token_label = ht.name
     return {
         "id": incident.id,
         "ip": incident.ip,
@@ -78,8 +91,8 @@ def serialize_incident(incident, events):
         "event_count": incident.event_count,
         "first_seen": _dt(incident.first_seen),
         "last_seen": _dt(incident.last_seen),
-        "token_id": latest.token_id if latest else "unknown-token",
-        "token_label": None,
+        "token_id": token_id,
+        "token_label": token_label,
         "events": [serialize_event(event) for event in relevant],
     }
 
@@ -109,11 +122,17 @@ def get_incidents(
 ):
     incidents = db.query(Incident).order_by(Incident.last_seen.desc()).limit(500).all()
     events = db.query(Event).filter(Event.incident_id.in_([item.id for item in incidents])).order_by(Event.created_at.asc()).all() if incidents else []
-    return [serialize_incident(item, events) for item in incidents]
+    # Build a map of honeytoken_id -> Honeytoken for label resolution
+    ht_ids = {e.honeytoken_id for e in events}
+    token_map = {}
+    if ht_ids:
+        tokens = db.query(Honeytoken).filter(Honeytoken.id.in_(ht_ids)).all()
+        token_map = {t.id: t for t in tokens}
+    return [serialize_incident(item, events, token_map) for item in incidents]
 
 
 @router.post("/incidents/summary")
-def summarize_incident(
+def get_incident_summary(
     body: SummaryRequest,
     _: bool = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -123,7 +142,7 @@ def summarize_incident(
         raise HTTPException(status_code=404, detail="No matching events found")
     peak = max(events, key=lambda item: item.score)
     flags = sorted({flag for event in events for flag in (event.flags or [])})
-    summary = summarize_incident({
+    summary = run_summarize_incident({
         "id": peak.incident_id or peak.id,
         "ip": peak.ip,
         "score": peak.score,
@@ -192,3 +211,13 @@ def revoke_token(
     token.is_active = False
     db.commit()
     return {"id": token_id, "revoked": True}
+
+
+@router.post("/decoys")
+def get_decoy_suggestions(
+    body: DecoyRequest,
+    _: bool = Depends(require_admin),
+):
+    """Generate AI-assisted or deterministic decoy placement suggestions."""
+    suggestions = run_generate_decoys(body.stack, body.token_types)
+    return suggestions

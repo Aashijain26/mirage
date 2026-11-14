@@ -21,9 +21,10 @@ from unittest.mock import patch, MagicMock
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.models import Honeytoken, Alert
+from app.models import Honeytoken, Alert, Incident, Event
 from app.intel.enrichment import enrich, clear_enrichment_cache, is_public_ip
 from app.intel.scoring import score, BASE_SCORE
 from app.intel.alerting import should_alert
@@ -50,8 +51,12 @@ def clean_state():
 
 @pytest.fixture
 def test_db():
-    """In-memory SQLite database session fixture."""
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    """In-memory SQLite database session fixture with StaticPool to ensure table persistence."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -262,9 +267,14 @@ def test_new_incident_created_outside_ten_minutes(test_db):
     inc1_id = res1["incident"]["id"]
 
     # Artificially age the active incident past 10 minutes (650 seconds ago)
-    from app.detection import _ACTIVE_INCIDENTS
     old_time = datetime.now(timezone.utc) - timedelta(seconds=650)
-    _ACTIVE_INCIDENTS[ip]["last_seen"] = old_time.isoformat()
+    db_inc = test_db.query(Incident).filter(Incident.id == inc1_id).first()
+    if db_inc is not None:
+        db_inc.last_seen = old_time
+        test_db.commit()
+    else:
+        from app.detection import _ACTIVE_INCIDENTS
+        _ACTIVE_INCIDENTS[ip]["last_seen"] = old_time.isoformat()
 
     # Second hit arrives outside the 10-minute window
     res2 = detect_honeytoken_usage(test_db, raw_token=raw_token, source_ip=ip, user_agent="boto3")
@@ -514,15 +524,20 @@ def test_concurrent_requests_incident_correlation(tmp_path):
     assert total_alerts == 10
 
     # 4. Final incident state reflects cumulative event count of 10
-    from app.detection import _ACTIVE_INCIDENTS
-    final_incident = _ACTIVE_INCIDENTS[attacker_ip]
-    assert final_incident["event_count"] == 10
-
-    # 5. Multi-token probe flag is detected and +25 is applied exactly once
-    assert "multi_token_probe" in final_incident["flags"]
-    # Base 40 + scripted_ua 15 + suspicious_request 15 + multi_token 25 = 95
-    assert final_incident["score"] == 95
-    assert final_incident["severity"] == "high"
+    db_incident = verify_session.query(Incident).filter(Incident.ip == attacker_ip, Incident.status == "open").first()
+    if db_incident is not None:
+        assert db_incident.event_count == 10
+        # 5. Multi-token probe flag is detected and +25 is applied exactly once
+        assert "multi_token_probe" in db_incident.flags
+        assert db_incident.score == 95
+        assert db_incident.severity == "high"
+    else:
+        from app.detection import _ACTIVE_INCIDENTS
+        final_incident = _ACTIVE_INCIDENTS[attacker_ip]
+        assert final_incident["event_count"] == 10
+        assert "multi_token_probe" in final_incident["flags"]
+        assert final_incident["score"] == 95
+        assert final_incident["severity"] == "high"
 
     verify_session.close()
 
@@ -602,3 +617,285 @@ def test_user_agent_and_path_sanitization_defense(test_db):
     assert "\x00" not in clean_event["path"]
     assert "<tag>" not in clean_event["path"]
     assert len(clean_event["path"]) <= 255
+
+
+# --- 8. Score Distinction & Time Boundary Tests ---
+
+def test_incident_score_distinct_from_event_score(test_db):
+    """
+    Verify that event score and incident score remain distinct.
+    If event 1 has score 70, incident score is 70.
+    If subsequent event 2 has score 40, event 2's score remains 40 while incident score stays 70.
+    """
+    raw_token = "honey_score_distinct_test"
+    thash = hashlib.sha256(raw_token.encode()).hexdigest()
+    ht = Honeytoken(name="score-distinction", token_hash=thash, token_type="api_key", is_active=True)
+    test_db.add(ht)
+    test_db.commit()
+
+    ip = "198.51.100.33"
+
+    # Event 1: scripted UA + suspicious path -> score 70 (high)
+    res1 = detect_honeytoken_usage(
+        test_db,
+        raw_token=raw_token,
+        source_ip=ip,
+        user_agent="curl/7.88.1",
+        path="/.env"
+    )
+    assert res1["score"] == 70
+    assert res1["severity"] == "high"
+    assert res1["incident"]["score"] == 70
+    assert res1["incident"]["severity"] == "high"
+
+    # Event 2: benign browser UA + benign path -> event score 40 (low)
+    res2 = detect_honeytoken_usage(
+        test_db,
+        raw_token=raw_token,
+        source_ip=ip,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        path="/"
+    )
+    # Event score is distinct: 40
+    assert res2["score"] == 40
+    assert res2["severity"] == "low"
+    # Incident score must not decrease: stays 70
+    assert res2["incident"]["score"] == 70
+    assert res2["incident"]["severity"] == "high"
+    assert res2["incident"]["event_count"] == 2
+
+
+def test_multi_token_probing_window_boundary(test_db):
+    """Multi-token probing outside the 10-minute window must NOT receive the +25 bonus."""
+    raw_token_1 = "honey_window_1"
+    raw_token_2 = "honey_window_2"
+    h1 = Honeytoken(name="window-tok-1", token_hash=hashlib.sha256(raw_token_1.encode()).hexdigest(), token_type="api_key", is_active=True)
+    h2 = Honeytoken(name="window-tok-2", token_hash=hashlib.sha256(raw_token_2.encode()).hexdigest(), token_type="aws", is_active=True)
+    test_db.add_all([h1, h2])
+    test_db.commit()
+
+    ip = "198.51.100.44"
+
+    # Hit token 1 at T - 12 minutes
+    old_time = datetime.now(timezone.utc) - timedelta(minutes=12)
+    res1 = detect_honeytoken_usage(test_db, raw_token=raw_token_1, source_ip=ip, user_agent="Mozilla/5.0")
+    # Backdate alert and incident
+    a1 = test_db.query(Alert).filter(Alert.id == res1["alert_id"]).first()
+    a1.created_at = old_time
+    inc1 = test_db.query(Incident).filter(Incident.id == res1["incident"]["id"]).first()
+    if inc1:
+        inc1.last_seen = old_time
+    test_db.commit()
+
+    # Hit token 2 at current time (T)
+    res2 = detect_honeytoken_usage(test_db, raw_token=raw_token_2, source_ip=ip, user_agent="Mozilla/5.0")
+    # Since previous alert was 12 minutes ago (> 10 min window), multi_token_probe should NOT trigger
+    assert "multi_token_probe" not in res2["flags"]
+    assert res2["score"] == 40
+
+
+def test_persistent_incident_storage_survives_session_restart(tmp_path):
+    """Verify that incidents and events are properly saved to disk and retrievable after session close."""
+    db_file = tmp_path / "persistence_test.db"
+    engine = create_engine(f"sqlite:///{db_file}")
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+
+    # Session 1: create token and trigger detection
+    s1 = Session()
+    raw = "honey_persist_test"
+    ht = Honeytoken(name="persist-tok", token_hash=hashlib.sha256(raw.encode()).hexdigest(), token_type="api_key", is_active=True)
+    s1.add(ht)
+    s1.commit()
+    res = detect_honeytoken_usage(s1, raw_token=raw, source_ip="203.0.113.99", user_agent="curl/8.0")
+    inc_id = res["incident"]["id"]
+    event_id = res["event_id"]
+    s1.close()
+
+    # Session 2: completely new session, read from disk
+    s2 = Session()
+    saved_inc = s2.query(Incident).filter(Incident.id == inc_id).first()
+    saved_event = s2.query(Event).filter(Event.id == event_id).first()
+
+    assert saved_inc is not None
+    assert saved_inc.ip == "203.0.113.99"
+    assert saved_inc.event_count == 1
+    assert saved_event is not None
+    assert saved_event.incident_id == saved_inc.id
+    assert saved_event.score == res["score"]
+    s2.close()
+
+
+# --- 9. HTTP API Integration Tests ---
+
+def test_trap_callback_http_integration(test_db):
+    """Verify HTTP requests to /t/{token_ref}/hook trigger detection and persist telemetry."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+
+    app.dependency_overrides[get_db] = lambda: test_db
+    client = TestClient(app)
+
+    try:
+        # Create token in test_db
+        raw = "snare_test_trap_http_token"
+        ht = Honeytoken(name="http-trap-token", token_hash=hashlib.sha256(raw.encode()).hexdigest(), token_type="api_key", is_active=True)
+        test_db.add(ht)
+        test_db.commit()
+
+        token_ref = f"tok-api_key-{ht.id}"
+        resp = client.get(f"/t/{token_ref}/hook", headers={"User-Agent": "curl/7.88.1"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("ok") is True
+        assert "request_id" in data
+
+        # Verify event and incident created in database
+        ev = test_db.query(Event).filter(Event.token_id == token_ref).first()
+        assert ev is not None
+        assert ev.ua == "curl/7.88.1"
+        assert ev.incident_id is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_aws_s3_trap_http_integration(test_db):
+    """Verify HTTP requests to /aws/{token_ref} return S3 XML response for AWS honeytokens."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+
+    app.dependency_overrides[get_db] = lambda: test_db
+    client = TestClient(app)
+
+    try:
+        ht = Honeytoken(name="aws-s3-token", token_hash=hashlib.sha256(b"aws-key").hexdigest(), token_type="aws", is_active=True)
+        test_db.add(ht)
+        test_db.commit()
+
+        token_ref = f"tok-aws-{ht.id}"
+        resp = client.get(f"/aws/{token_ref}/s3/list-buckets", headers={"User-Agent": "boto3/1.28.0"})
+        assert resp.status_code == 200
+        assert "ListAllMyBucketsResult" in resp.text
+        assert resp.headers["content-type"] == "application/xml"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_incidents_api_with_token_label(test_db):
+    """Verify GET /admin/incidents returns serialized incidents with resolved token labels."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+
+    os.environ["ADMIN_TOKEN"] = "test-secret-token"
+    app.dependency_overrides[get_db] = lambda: test_db
+    client = TestClient(app)
+
+    try:
+        # Unauthorized without header
+        unauth = client.get("/admin/incidents")
+        assert unauth.status_code == 401
+
+        # Seed a token and trigger an incident
+        raw = "snare_admin_test_tok"
+        ht = Honeytoken(name="Prod API Key Decoy", token_hash=hashlib.sha256(raw.encode()).hexdigest(), token_type="api_key", is_active=True)
+        test_db.add(ht)
+        test_db.commit()
+
+        detect_honeytoken_usage(test_db, raw_token=raw, source_ip="198.51.100.55", user_agent="python-requests/2.31.0")
+
+        # Authorized call
+        resp = client.get("/admin/incidents", headers={"Authorization": "Bearer test-secret-token"})
+        assert resp.status_code == 200
+        incidents = resp.json()
+        assert len(incidents) >= 1
+
+        target_inc = next((i for i in incidents if i["ip"] == "198.51.100.55"), None)
+        assert target_inc is not None
+        assert target_inc["token_label"] == "Prod API Key Decoy"
+        assert target_inc["event_count"] == 1
+        assert len(target_inc["events"]) == 1
+        assert target_inc["events"][0]["ua"] == "python-requests/2.31.0"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_incident_summary_api(test_db):
+    """Verify POST /admin/incidents/summary provides forensic summary and recommendations."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+
+    os.environ["ADMIN_TOKEN"] = "test-secret-token"
+    app.dependency_overrides[get_db] = lambda: test_db
+    client = TestClient(app)
+
+    try:
+        # Seed token and event
+        raw = "snare_summary_tok"
+        ht = Honeytoken(name="Summary Test Decoy", token_hash=hashlib.sha256(raw.encode()).hexdigest(), token_type="aws", is_active=True)
+        test_db.add(ht)
+        test_db.commit()
+
+        res = detect_honeytoken_usage(test_db, raw_token=raw, source_ip="185.220.101.5", user_agent="boto3")
+        ev_id = res["event_id"]
+
+        # Call summary endpoint
+        resp = client.post(
+            "/admin/incidents/summary",
+            json={"event_ids": [ev_id]},
+            headers={"Authorization": "Bearer test-secret-token"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "summary" in data
+        assert "behavior" in data
+        assert "recommended_actions" in data
+        assert "severity" in data
+        assert "likely_actor" in data
+
+        # 404 for empty or non-matching event IDs
+        resp_404 = client.post(
+            "/admin/incidents/summary",
+            json={"event_ids": [999999]},
+            headers={"Authorization": "Bearer test-secret-token"}
+        )
+        assert resp_404.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_decoys_api(test_db):
+    """Verify POST /admin/decoys returns stack-tailored decoy placement suggestions."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.database import get_db
+
+    os.environ["ADMIN_TOKEN"] = "test-secret-token"
+    app.dependency_overrides[get_db] = lambda: test_db
+    client = TestClient(app)
+
+    try:
+        # Unauthorized without token
+        unauth = client.post("/admin/decoys", json={"stack": "FastAPI React", "token_types": ["aws", "api_key"]})
+        assert unauth.status_code == 401
+
+        # Authorized
+        resp = client.post(
+            "/admin/decoys",
+            json={"stack": "FastAPI + React on AWS", "token_types": ["aws", "api_key", "db"]},
+            headers={"Authorization": "Bearer test-secret-token"}
+        )
+        assert resp.status_code == 200
+        decoys = resp.json()
+        assert isinstance(decoys, list)
+        assert len(decoys) >= 3
+        for d in decoys:
+            assert "var_names" in d
+            assert "file_path" in d
+            assert "comment" in d
+            assert "placement_note" in d
+    finally:
+        app.dependency_overrides.clear()

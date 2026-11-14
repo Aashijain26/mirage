@@ -5,6 +5,7 @@ export const ENDPOINTS = {
   events: "/admin/events",
   incidents: "/admin/incidents",
   summary: "/admin/incidents/summary",
+  decoys: "/admin/decoys",
   health: "/health"
 };
 
