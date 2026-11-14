@@ -1,5 +1,5 @@
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -25,3 +25,38 @@ class Alert(Base):
     source_ip = Column(String, nullable=True)
     user_agent = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ip = Column(String, nullable=False, index=True)
+    status = Column(String, nullable=False, default="open", index=True)
+    score = Column(Integer, nullable=False, default=40)
+    severity = Column(String, nullable=False, default="low")
+    flags = Column(JSON, nullable=False, default=list)
+    geo = Column(JSON, nullable=False, default=dict)
+    event_count = Column(Integer, nullable=False, default=0)
+    first_seen = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_seen = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    honeytoken_id = Column(Integer, ForeignKey("honeytokens.id"), nullable=False, index=True)
+    incident_id = Column(Integer, ForeignKey("incidents.id"), nullable=True, index=True)
+    token_id = Column(String, nullable=False, index=True)
+    event_type = Column(String, nullable=False)
+    ip = Column(String, nullable=False, index=True)
+    ua = Column(Text, nullable=True)
+    path = Column(String, nullable=False, default="/")
+    method = Column(String, nullable=False, default="GET")
+    headers = Column(JSON, nullable=False, default=dict)
+    geo = Column(JSON, nullable=False, default=dict)
+    score = Column(Integer, nullable=False, default=40)
+    severity = Column(String, nullable=False, default="low")
+    flags = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)

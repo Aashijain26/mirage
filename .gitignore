@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.db
+dashboard/node_modules/
+dashboard/dist/
+dashboard/src/.cph/
+.DS_Store
