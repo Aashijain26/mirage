@@ -18,7 +18,6 @@ services:
 
   - type: web
     name: mirage-dashboard
-    runtime: static
     plan: free
     rootDir: dashboard
     buildCommand: npm ci && npm run build
