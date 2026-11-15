@@ -49,10 +49,10 @@ class SummaryRequest(BaseModel):
 
 
 class DecoyRequest(BaseModel):
-    type: str = Field(min_length=1, max_length=30)
+    token_id: str = Field(min_length=1, max_length=80)
     label: str = Field(min_length=1, max_length=120)
     host: str = Field(default="manual-entry", max_length=500)
-    path: str = Field(min_length=1, max_length=500)
+    path: str = Field(default="", max_length=500)
 
 
 class DecoySuggestionsRequest(BaseModel):
@@ -216,32 +216,10 @@ def create_token(
     try:
         callback_base_url = os.getenv("PUBLIC_BASE_URL") or str(request.base_url).rstrip("/")
         context = body.context.strip() if body.context else None
-        secret = generate_honeytoken(
-            db, body.label.strip(), body.type, callback_base_url, context, commit=False
-        )
-        token_id = int(secret["id"].rsplit("-", 1)[1])
-        token = db.query(Honeytoken).filter_by(id=token_id).first()
-        if token is None:
-            raise RuntimeError("Generated token record could not be loaded")
-        location = context or ""
-        decoy_type = {"aws": "aws", "api_key": "api", "webhook": "webhook", "db": "db"}[token.token_type]
-        db.add(PlantedDecoy(
-            honeytoken_id=token_id,
-            decoy_type=decoy_type,
-            label=token.name,
-            host=location[:255] or "tokens-page",
-            path=location[:500] or "/",
-        ))
-        db.commit()
-        db.refresh(token)
-        secret["created_at"] = _dt(token.created_at)
-        return secret
+        return generate_honeytoken(db, body.label.strip(), body.type, callback_base_url, context)
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception:
-        db.rollback()
-        raise
 
 
 @router.delete("/tokens/{token_id}")
@@ -295,9 +273,15 @@ def create_decoy(
     _: bool = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    decoy_type = body.type.strip().lower()
-    if decoy_type not in {"aws", "api", "webhook", "ssh", "env", "db", "backup"}:
-        raise HTTPException(status_code=422, detail="Unsupported decoy type")
+    token_match = re.fullmatch(r"tok-(aws|api_key|webhook|db)-(\d+)", body.token_id.strip(), re.IGNORECASE)
+    if not token_match:
+        raise HTTPException(status_code=404, detail="Select a valid existing token first")
+    token = db.query(Honeytoken).filter_by(id=int(token_match.group(2))).first()
+    if token is None or not token.is_active:
+        raise HTTPException(status_code=404, detail="The selected token is missing or revoked")
+    if db.query(PlantedDecoy).filter_by(honeytoken_id=token.id).first():
+        raise HTTPException(status_code=409, detail="This token is already listed as a planted decoy")
+
     label = body.label.strip()
     host = body.host.strip()
     path = body.path.strip()
@@ -307,27 +291,33 @@ def create_decoy(
         parsed = urlsplit(host)
         if not parsed.hostname:
             raise HTTPException(status_code=422, detail="Enter a valid http or https placement URL")
-        path = host[:500]
+        if not path:
+            path = host[:500]
         host = parsed.netloc[:255]
     path = path or "/"
-    token_type = {
-        "aws": "aws", "api": "api_key", "webhook": "webhook",
-        "ssh": "api_key", "env": "api_key", "db": "db", "backup": "webhook",
-    }[decoy_type]
-    try:
-        base_url = os.getenv("PUBLIC_BASE_URL") or str(request.base_url).rstrip("/")
-        secret = generate_honeytoken(db, label, token_type, base_url, f"{host}:{path}"[:500])
-        row = PlantedDecoy(honeytoken_id=int(secret["id"].rsplit("-", 1)[1]), decoy_type=decoy_type,
-                           label=label, host=host, path=path)
-        db.add(row)
-        db.commit()
-        db.refresh(row)
-        return {"id": row.id, "type": row.decoy_type, "label": row.label, "host": row.host,
-                "path": row.path, "honeytoken_id": secret["id"], "callback_url": secret["callback_url"],
-                "value": secret["value"], "message": "Plant this decoy content; the credential is shown only once."}
-    except ValueError as exc:
-        db.rollback()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    decoy_type = {"aws": "aws", "api_key": "api", "webhook": "webhook", "db": "db"}[token.token_type]
+    row = PlantedDecoy(
+        honeytoken_id=token.id,
+        decoy_type=decoy_type,
+        label=label,
+        host=host[:255],
+        path=path[:500],
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    base_url = (os.getenv("PUBLIC_BASE_URL") or str(request.base_url)).rstrip("/")
+    public_id = token_public_id(token)
+    return {
+        "id": row.id,
+        "type": row.decoy_type,
+        "label": row.label,
+        "host": row.host,
+        "path": row.path,
+        "honeytoken_id": public_id,
+        "callback_url": f"{base_url}/t/{public_id}/hook",
+        "message": "Existing token linked to this planting location; no new credential was generated.",
+    }
 
 
 @router.delete("/decoys/{decoy_id}")

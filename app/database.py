@@ -27,7 +27,7 @@ Base = declarative_base()
 
 
 def init_db():
-    """Create tables, apply additive upgrades, and link existing tokens to decoys.
+    """Create tables and apply safe, one-time compatibility migrations.
 
     Existing installations predate Honeytoken.context. CREATE TABLE IF NOT EXISTS
     does not add columns, so keep the small compatibility migration here until a
@@ -39,34 +39,50 @@ def init_db():
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE honeytokens ADD COLUMN context VARCHAR(500)"))
 
-    # Older Tokens-page records have a Honeytoken row but no PlantedDecoy row.
-    # Create the missing inventory link without generating a new credential.
-    from app.models import Honeytoken, PlantedDecoy
+    # Previous builds automatically listed every Tokens-page item as planted.
+    # Remove only those generated inventory links once, retaining the tokens.
+    migration = "remove_unplanted_token_inventory_links_v1"
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS mirage_migrations "
+            "(name VARCHAR(120) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        ))
+        already_applied = connection.execute(
+            text("SELECT name FROM mirage_migrations WHERE name = :name"),
+            {"name": migration},
+        ).first()
 
-    session = SessionLocal()
-    try:
-        linked_ids = {
-            row[0] for row in session.query(PlantedDecoy.honeytoken_id).all()
-        }
-        token_types = {"aws": "aws", "api_key": "api", "webhook": "webhook", "db": "db"}
-        for token in session.query(Honeytoken).all():
-            if token.id in linked_ids:
-                continue
-            location = (token.context or "").strip()
-            session.add(PlantedDecoy(
-                honeytoken_id=token.id,
-                decoy_type=token_types.get(token.token_type, "api"),
-                label=token.name,
-                host=location[:255] or "tokens-page",
-                path=location[:500] or "/",
-                is_active=token.is_active,
-            ))
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
+    if not already_applied:
+        from app.models import Honeytoken, PlantedDecoy
+
+        session = SessionLocal()
+        try:
+            type_map = {"aws": "aws", "api_key": "api", "webhook": "webhook", "db": "db"}
+            linked = session.query(PlantedDecoy, Honeytoken).join(
+                Honeytoken, Honeytoken.id == PlantedDecoy.honeytoken_id
+            ).all()
+            for decoy, token in linked:
+                location = (token.context or "").strip()
+                expected_host = location[:255] or "tokens-page"
+                expected_path = location[:500] or "/"
+                if (
+                    decoy.label == token.name
+                    and decoy.host == expected_host
+                    and decoy.path == expected_path
+                    and decoy.decoy_type == type_map.get(token.token_type, "api")
+                ):
+                    session.delete(decoy)
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+        with engine.begin() as connection:
+            connection.execute(
+                text("INSERT INTO mirage_migrations (name) VALUES (:name)"),
+                {"name": migration},
+            )
 
 
 def get_db():

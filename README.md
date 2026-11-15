@@ -140,4 +140,11 @@ Each decoy's callback remains tied to its original honeytoken. Repeated requests
 
 To enable this feature on Render, set `GITHUB_LEAK_RESPONSE_ENABLED=true`, `GITHUB_REPOSITORY=owner/name`, and `GITHUB_TOKEN` on the backend. The fine-grained token must be restricted to the selected repository and have **Secret scanning alerts: Read** and **Contents: Read and write** permissions. `GITHUB_ALERT_POLL_INTERVAL_SECONDS` controls polling (30–3600 seconds; default 60). GitHub reports supported secret patterns only; this is not an internet-wide scanner.
 
-For a manual presentation, open **Decoys**, choose a type such as **Fake AWS credentials**, **Fake API key**, or **Webhook / website API**, enter a label and the host or URL where you plan to place it, then click **Create tracked decoy**. Mirage returns a fake credential and its callback URL. Plant the fake credential yourself in a controlled test location. To demonstrate detection, call the Mirage callback URL shown after creation; opening only the external website URL does not send an event to Mirage. Reusing the same callback increases that decoy's hit count. Never use a real credential for testing; revoke/rotate any credential GitHub reports.
+## Manual token-to-decoy flow
+
+1. In **Tokens**, choose a credential type, give it a name, and enter the repository or place where you will put it. Click **Create token**, then copy the fake credential and Trap URL from the one-time confirmation. Tokens created here are not yet listed as planted decoys.
+2. Put the fake credential and Trap URL in a controlled GitHub test file yourself. Mirage does not commit this file for you.
+3. In **Decoys**, select that existing unplanted token, give the placement a label, and enter the host or URL and optional path. Click **Mark token as planted**. This links the existing token to its placement; it does not generate a second credential or Trap URL.
+4. Open the Trap URL to create a test event. Opening only the GitHub file or the unrelated placement website does not send a request to Mirage. Reusing the same Trap URL adds hits to the same token and decoy.
+
+Never use a real credential for testing; revoke/rotate any real credential GitHub reports. The separate GitHub secret-alert response can still generate and plant a decoy automatically when enabled.

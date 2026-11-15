@@ -560,8 +560,9 @@ export async function mockGetTokens() {
 }
 
 export async function mockCreateToken({ type, label, context }) {
+  const id = "tok-" + Math.random().toString(36).substring(2, 8);
   const newTok = {
-    id: "tok-" + Math.random().toString(36).substring(2, 8),
+    id,
     type: type || "aws",
     label: label || "custom-token",
     context: context || "planted",
@@ -569,6 +570,7 @@ export async function mockCreateToken({ type, label, context }) {
     value: {
       KEY: "sample_secret_revealed_once"
     },
+    callback_url: `https://mock.mirage.test/t/${id}/hook`,
     hits: 0,
     last_hit: null,
     created_at: new Date().toISOString(),
@@ -587,21 +589,26 @@ export async function mockGetDecoys() {
   return [...mockDecoysStore];
 }
 
-export async function mockCreateDecoy({ label, host, path, type = "env" }) {
-  const badgeMap = {
-    ssh: "SSH KEY",
-    env: "ENV",
-    db: "DB DUMP",
-    backup: "BACKUP"
-  };
+export async function mockCreateDecoy({ token_id, label, host, path }) {
+  const token = mockTokensStore.find((item) => item.id === token_id);
+  if (!token) throw new Error("Choose a token from the Tokens page first.");
+  if (mockDecoysStore.some((item) => item.honeytoken_id === token_id)) {
+    throw new Error("This token is already listed as a planted decoy.");
+  }
+  const typeMap = { aws: "aws", api_key: "api", webhook: "webhook", db: "db" };
+  const type = typeMap[token.type] || "api";
+  const callback_url = token.callback_url || `https://mock.mirage.test/t/${token_id}/hook`;
   const newDec = {
     id: "dec-" + Math.random().toString(36).substring(2, 8),
+    honeytoken_id: token_id,
     type,
-    badge: badgeMap[type] || "ENV",
+    badge: type.toUpperCase(),
     label: label || "new-decoy",
     host: host || "host-01",
-    path: path ? (path.includes(":") ? path : `${host || "host-01"}:${path}`) : `${host || "host-01"}:/srv/app/${label}`,
+    path: path || "/",
     status: "Untouched",
+    active: true,
+    callback_url,
     hits: 0,
     last_hit: null
   };

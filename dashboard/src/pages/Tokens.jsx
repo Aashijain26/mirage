@@ -78,11 +78,11 @@ export function Tokens() {
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-mono-tech text-[#8FA0BD]">[01] \\</span>
               <h2 className="font-heading text-lg font-bold text-white tracking-wide">
-                PLANT A TOKEN
+                CREATE A TOKEN
               </h2>
             </div>
             <p className="text-xs text-[#8FA0BD]">
-              Pick a type, name it, drop it somewhere juicy.
+              Generate the fake credential and Trap URL here. Then select this token in Decoys to record where you planted it.
             </p>
           </div>
 
@@ -166,7 +166,7 @@ export function Tokens() {
 
             {/* Footnote */}
             <p className="text-[11px] text-[#64748b] leading-relaxed">
-              The token is fake. Any use of it is a hit, and the hit tells you who moved and from where.
+              A hit is recorded when a request reaches this token's Trap URL or AWS endpoint. Creating or storing the credential alone does not trigger an event.
             </p>
           </form>
         </SpotlightCard>
@@ -177,7 +177,7 @@ export function Tokens() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono-tech text-[#8FA0BD]">[02] \\</span>
               <h2 className="font-heading text-lg font-bold text-white tracking-wide">
-                PLANTED TOKENS
+                TOKENS CREATED
               </h2>
             </div>
             <span className="text-xs font-mono-tech text-[#64748b]">

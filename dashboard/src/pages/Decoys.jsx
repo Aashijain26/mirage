@@ -1,72 +1,26 @@
-import React, { useState } from "react";
-import { Key, FileCode, Database, Archive, Trash2, Cloud, Webhook, ExternalLink } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Trash2, ExternalLink } from "lucide-react";
+import { Link } from "react-router-dom";
 import { SpotlightCard } from "../components/SpotlightCard.jsx";
 import { CopyButton } from "../components/CopyButton.jsx";
 import { useAppData } from "../hooks/useAppData.js";
 
-const DECOY_TYPES = [
-  {
-    id: "aws",
-    label: "Fake AWS credentials",
-    desc: "An AWS-shaped key with a Mirage endpoint",
-    icon: Cloud,
-    tag: "[01]"
-  },
-  {
-    id: "api",
-    label: "Fake API key",
-    desc: "A random Mirage key with its own trap URL",
-    icon: Key,
-    tag: "[02]"
-  },
-  {
-    id: "webhook",
-    label: "Webhook / website API",
-    desc: "A fake integration credential to plant manually",
-    icon: Webhook,
-    tag: "[03]"
-  },
-  {
-    id: "ssh",
-    label: "Fake SSH key",
-    desc: "A private key that should never move",
-    icon: Key,
-    tag: "[04]"
-  },
-  {
-    id: "env",
-    label: "Fake .env",
-    desc: "Credentials file left in the open",
-    icon: FileCode,
-    tag: "[05]"
-  },
-  {
-    id: "db",
-    label: "Fake DB dump",
-    desc: "A dump nobody should download",
-    icon: Database,
-    tag: "[06]"
-  },
-  {
-    id: "backup",
-    label: "Fake backup",
-    desc: "An archive worth poking at",
-    icon: Archive,
-    tag: "[07]"
-  }
-];
-
 export function Decoys() {
   const {
-    decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys, decoysError, isMockMode
+    tokens, decoys, createDecoy, deleteDecoy, searchQuery, loadingDecoys, decoysError
   } = useAppData();
-  const [selectedType, setSelectedType] = useState("ssh");
+  const [selectedTokenId, setSelectedTokenId] = useState("");
   const [label, setLabel] = useState("");
   const [host, setHost] = useState("");
   const [path, setPath] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [createdDecoy, setCreatedDecoy] = useState(null);
   const [error, setError] = useState("");
+
+  const availableTokens = useMemo(() => {
+    const plantedTokenIds = new Set(decoys.map((decoy) => decoy.honeytoken_id));
+    return tokens.filter((token) => !token.revoked && !plantedTokenIds.has(token.id));
+  }, [tokens, decoys]);
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!label.trim()) return;
@@ -74,13 +28,14 @@ export function Decoys() {
     setSubmitting(true);
     try {
       const created = await createDecoy({
-        type: selectedType,
+        token_id: selectedTokenId,
         label: label.trim(),
-        host: host.trim() || "manual-entry",
-        path: path.trim() || "/"
+        host: host.trim(),
+        path: path.trim()
       });
       setCreatedDecoy(created);
       setError("");
+      setSelectedTokenId("");
       setLabel("");
       setHost("");
       setPath("");
@@ -114,41 +69,32 @@ export function Decoys() {
               </h2>
             </div>
             <p className="text-xs text-[#8FA0BD]">
-              Choose the fake credential type, then enter where you plan to place it. Mirage makes the credential and a trap URL. To create an event, use that trap URL; simply opening the website/location you typed does not trigger Mirage.
+              First create a fake credential in Tokens. Then choose that same token here and record where you planted it. This step does not create another credential or another Trap URL.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* 2x2 Grid of Chamfered Type Cards */}
-            <div className="grid grid-cols-2 gap-2.5">
-              {DECOY_TYPES.map((t) => {
-                const Icon = t.icon;
-                const isSelected = selectedType === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setSelectedType(t.id)}
-                    className={`clip-chamfer-tr p-3.5 text-left transition-all duration-200 border cursor-pointer flex flex-col justify-between min-h-[96px] ${
-                      isSelected
-                        ? "bg-[#14231b] border-[#22c55e] shadow-[0_0_20px_rgba(34,197,94,0.2)] text-white scale-[1.02]"
-                        : "bg-[#141d2f] border-[#202e47] text-[#8FA0BD] hover:border-blue-400/40 hover:text-white hover:bg-white/5"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-[10px] font-mono-tech text-[#64748b]">{t.tag}</span>
-                      <Icon className={`w-3.5 h-3.5 ${isSelected ? "text-[#22c55e]" : "text-[#8FA0BD]"}`} />
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="font-bold text-xs text-white leading-tight">{t.label}</div>
-                      <div className="text-[10px] text-[#64748b] mt-0.5 line-clamp-2 leading-tight">
-                        {t.desc}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Select the token you already created</label>
+              <select
+                required
+                value={selectedTokenId}
+                onChange={(e) => setSelectedTokenId(e.target.value)}
+                disabled={availableTokens.length === 0}
+                className="w-full bg-[#141d2f] border border-[#202e47] focus:border-[#38bdf8] focus:outline-none rounded-xl px-4 py-2.5 text-xs text-white font-mono-tech disabled:opacity-60"
+              >
+                <option value="">Choose a token</option>
+                {availableTokens.map((token) => (
+                  <option key={token.id} value={token.id}>
+                    {token.label} · {token.type.toUpperCase()}{token.context ? ` · ${token.context}` : ""}
+                  </option>
+                ))}
+              </select>
+              {availableTokens.length === 0 && (
+                <p className="text-[11px] text-[#8FA0BD]">
+                  No unplaced tokens yet. <Link className="text-cyan-300 underline" to="/tokens">Create a token first</Link>.
+                </p>
+              )}
             </div>
 
             {/* Field: Label */}
@@ -166,9 +112,10 @@ export function Decoys() {
 
             {/* Field: Host */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Where will you plant it? (host or URL)</label>
+              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Where are you planting it? (host or URL)</label>
               <input
                 type="text"
+                required
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
                 placeholder="build-runner-03 or https://your-site.example/api"
@@ -178,7 +125,7 @@ export function Decoys() {
 
             {/* Field: Path */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Path or note (optional)</label>
+              <label className="block text-xs font-mono-tech text-[#cbd5e1]">Path (optional)</label>
               <input
                 type="text"
                 value={path}
@@ -194,13 +141,12 @@ export function Decoys() {
               disabled={submitting}
               className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-black font-bold text-xs py-3 rounded-xl shadow-lg shadow-emerald-500/25 active:scale-[0.99] transition-all cursor-pointer hover:shadow-[0_0_20px_rgba(34,197,94,0.35)]"
             >
-              {submitting ? "Creating..." : "Create tracked decoy"}
+              {submitting ? "Saving..." : "Mark token as planted"}
             </button>
             {error && <p role="alert" className="text-xs text-rose-400">{error}</p>}
             {createdDecoy && (
               <div className="rounded-xl border border-emerald-700/60 bg-emerald-950/30 p-3 space-y-2 text-xs text-emerald-100">
-                <strong>{isMockMode ? "Demo record created in this browser session." : "Created. Copy this credential now; it will not be shown again."}</strong>
-                {createdDecoy.value && <div className="flex items-start justify-between gap-2 break-all font-mono"><span>{typeof createdDecoy.value === "string" ? createdDecoy.value : JSON.stringify(createdDecoy.value)}</span><CopyButton compact label="Copy credential" textToCopy={typeof createdDecoy.value === "string" ? createdDecoy.value : JSON.stringify(createdDecoy.value)} /></div>}
+                <strong>Placement saved. This is the same token and Trap URL you created in Tokens.</strong>
                 {createdDecoy.callback_url && (
                   <div className="space-y-1 break-all font-mono text-cyan-300">
                     <div>Trap URL: {createdDecoy.callback_url}</div>
@@ -228,7 +174,7 @@ export function Decoys() {
               </h2>
             </div>
             <span className="text-xs font-mono-tech text-[#64748b]">
-              {decoys.filter((decoy) => decoy.active).length} active
+              {decoys.filter((decoy) => decoy.active !== false).length} active
             </span>
           </div>
 
