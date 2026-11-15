@@ -14,6 +14,7 @@ export function TopHeader() {
   const location = useLocation();
   const { simulateAttack, searchQuery, setSearchQuery, isMockMode } = useAppData();
   const [toast, setToast] = useState(null);
+  const [simulateBusy, setSimulateBusy] = useState(false);
 
   let breadcrumb = "MIRAGE / OVERVIEW";
   let title = "OVERVIEW";
@@ -33,17 +34,18 @@ export function TopHeader() {
     searchPlaceholder = "Search incidents";
   }
 
-  const handleSimulate = () => {
-    const ev = simulateAttack();
-    if (ev) {
-      setToast({
-        ip: ev.ip,
-        token: ev.token_label,
-        score: ev.score
-      });
-      setTimeout(() => {
-        setToast(null);
-      }, 4500);
+  const handleSimulate = async () => {
+    setSimulateBusy(true);
+    try {
+      const ev = await simulateAttack();
+      setToast(isMockMode
+        ? { ip: ev.ip, token: ev.token_label, score: ev.score }
+        : { live: true, token: ev.token_label });
+    } catch (error) {
+      setToast({ error: error.message || "Could not trigger a decoy. Create one and try again." });
+    } finally {
+      setSimulateBusy(false);
+      setTimeout(() => setToast(null), 5000);
     }
   };
 
@@ -54,14 +56,14 @@ export function TopHeader() {
 
       {/* Simulated Attack Notification Toast Banner */}
       {toast && (
-        <div className="relative z-30 mb-3 bg-red-950/90 border border-red-600/70 text-white rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shadow-[0_0_25px_rgba(239,68,68,0.4)] animate-bounce backdrop-blur-md">
+        <div className={`relative z-30 mb-3 ${toast.error ? "bg-amber-950/90 border-amber-600/70" : toast.live ? "bg-emerald-950/90 border-emerald-600/70" : "bg-red-950/90 border-red-600/70"} border text-white rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 backdrop-blur-md`}>
           <div className="flex items-center gap-2.5 text-xs font-mono-tech">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>
-              <strong className="text-rose-300">ATTACK SIMULATED:</strong> High-severity Tor burst from{" "}
-              <code className="text-white font-bold">{toast.ip}</code> probe on{" "}
-              <code className="text-emerald-400">{toast.token}</code> (Risk score: {toast.score})
-            </span>
+            <AlertTriangle className={`w-4 h-4 ${toast.error ? "text-amber-300" : toast.live ? "text-emerald-300" : "text-rose-400"} shrink-0`} />
+            {toast.error ? <span>{toast.error}</span> : toast.live ? (
+              <span><strong className="text-emerald-300">TRAP TEST RECORDED:</strong> Request sent to <code className="text-white font-bold">{toast.token}</code>. Its hit count and event feed have been refreshed.</span>
+            ) : (
+              <span><strong className="text-rose-300">ATTACK SIMULATED:</strong> High-severity Tor burst from <code className="text-white font-bold">{toast.ip}</code> probe on <code className="text-emerald-400">{toast.token}</code> (Risk score: {toast.score})</span>
+            )}
           </div>
           {isMockMode && <button
             type="button"
@@ -123,10 +125,12 @@ export function TopHeader() {
           <button
             type="button"
             onClick={handleSimulate}
-            className="bg-[#22c55e] hover:bg-[#16a34a] text-black font-bold text-xs sm:text-sm px-4 sm:px-5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer hover:shadow-[0_0_20px_rgba(34,197,94,0.4)]"
+            disabled={simulateBusy}
+            title="Send a test request to the newest active decoy"
+            className="bg-[#22c55e] hover:bg-[#16a34a] text-black font-bold text-xs sm:text-sm px-4 sm:px-5 py-2 rounded-xl flex items-center gap-1.5 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer hover:shadow-[0_0_20px_rgba(34,197,94,0.4)] disabled:opacity-60"
           >
             <Zap className="w-3.5 h-3.5 fill-black stroke-black" />
-            <span>Simulate attack</span>
+            <span>{simulateBusy ? "Sending..." : "Simulate attack"}</span>
           </button>
         </div>
       </div>

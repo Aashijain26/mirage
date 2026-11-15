@@ -174,12 +174,25 @@ export function AppDataProvider({ children }) {
     };
   }, [tokens, liveEvents.events, incidents]);
 
-  const handleSimulateAttack = useCallback(() => {
-    if (!isMockMode) return null;
-    const attackEvent = simulateImmediateAttack();
-    liveEvents.pushEvent(attackEvent);
-    return attackEvent;
-  }, [liveEvents]);
+  const handleSimulateAttack = useCallback(async () => {
+    if (isMockMode) {
+      const attackEvent = simulateImmediateAttack();
+      liveEvents.pushEvent(attackEvent);
+      return attackEvent;
+    }
+
+    const target = decoys.find((decoy) => decoy.active && decoy.callback_url);
+    if (!target) throw new Error("Create an active decoy first, then simulate its trap.");
+
+    const response = await fetch(target.callback_url, {
+      method: "GET", mode: "cors", credentials: "omit", cache: "no-store"
+    });
+    if (!response.ok) {
+      throw new Error(`Mirage returned HTTP ${response.status}. Check the trap URL and backend deployment.`);
+    }
+    await Promise.all([liveEvents.refreshEvents(), refreshIncidents(), refreshDecoys(), refreshTokens()]);
+    return { live: true, ip: "Browser test", token_label: target.label };
+  }, [decoys, liveEvents, refreshDecoys, refreshIncidents, refreshTokens]);
 
   const handleCreateToken = useCallback(
     async (payload) => {
