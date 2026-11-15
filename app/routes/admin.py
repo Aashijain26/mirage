@@ -215,9 +215,33 @@ def create_token(
         raise HTTPException(status_code=422, detail="Label must not be blank")
     try:
         callback_base_url = os.getenv("PUBLIC_BASE_URL") or str(request.base_url).rstrip("/")
-        return generate_honeytoken(db, body.label.strip(), body.type, callback_base_url, body.context)
+        context = body.context.strip() if body.context else None
+        secret = generate_honeytoken(
+            db, body.label.strip(), body.type, callback_base_url, context, commit=False
+        )
+        token_id = int(secret["id"].rsplit("-", 1)[1])
+        token = db.query(Honeytoken).filter_by(id=token_id).first()
+        if token is None:
+            raise RuntimeError("Generated token record could not be loaded")
+        location = context or ""
+        decoy_type = {"aws": "aws", "api_key": "api", "webhook": "webhook", "db": "db"}[token.token_type]
+        db.add(PlantedDecoy(
+            honeytoken_id=token_id,
+            decoy_type=decoy_type,
+            label=token.name,
+            host=location[:255] or "tokens-page",
+            path=location[:500] or "/",
+        ))
+        db.commit()
+        db.refresh(token)
+        secret["created_at"] = _dt(token.created_at)
+        return secret
     except ValueError as exc:
+        db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.delete("/tokens/{token_id}")

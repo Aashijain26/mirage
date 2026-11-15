@@ -197,10 +197,10 @@ export function AppDataProvider({ children }) {
   const handleCreateToken = useCallback(
     async (payload) => {
       const res = await apiCreateToken(payload);
-      await refreshTokens();
+      await Promise.all([refreshTokens(), refreshDecoys()]);
       return res;
     },
-    [refreshTokens]
+    [refreshDecoys, refreshTokens]
   );
 
   const handleDeleteToken = useCallback(
